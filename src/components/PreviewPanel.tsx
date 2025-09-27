@@ -5,6 +5,8 @@ import IniViewer from './preview/IniViewer'
 import DatViewer from './preview/DatViewer'
 import HexViewer from './preview/HexViewer'
 import TxtViewer from './preview/TxtViewer'
+import PalViewer from './preview/PalViewer'
+import PcxViewer from './preview/PcxViewer'
 
 type MixFileData = { file: File; info: MixFileInfo }
 
@@ -41,6 +43,8 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({ selectedFile, mixFiles }) =
         return 'INI 配置文件'
       case 'txt':
         return '文本文件'
+      case 'pal':
+        return '调色板文件'
       case 'shp':
         return 'SHP 图像文件'
       case 'vxl':
@@ -68,6 +72,14 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({ selectedFile, mixFiles }) =
     ],
     txt: [
       { key: 'text', label: '文本', Component: TxtViewer },
+      { key: 'hex', label: '十六进制', Component: HexViewer },
+    ],
+    pal: [
+      { key: 'swatches', label: '色板', Component: PalViewer },
+      { key: 'hex', label: '十六进制', Component: HexViewer },
+    ],
+    pcx: [
+      { key: 'image', label: '图像', Component: PcxViewer },
       { key: 'hex', label: '十六进制', Component: HexViewer },
     ],
   }

@@ -20,6 +20,7 @@ export interface MixEntryInfo {
 export class MixParser {
   static async parseFile(file: File): Promise<MixFileInfo> {
     try {
+      console.log('[MixParser] parseFile', { name: file.name, size: file.size })
       const arrayBuffer = await file.arrayBuffer();
       const dataStream = new DataStream(arrayBuffer);
       const mixFile = new MixFile(dataStream);
@@ -60,10 +61,13 @@ export class MixParser {
         // 忽略 LMD 解析失败，使用回退方案
       }
 
-      // 将MixEntry转换为MixEntryInfo（优先使用 LMD 名称）
-      entries.forEach((entry, index) => {
+      // 将MixEntry转换为MixEntryInfo（优先使用 LMD 名称；无则用8位十六进制 + 推测扩展名）
+      entries.forEach((entry) => {
         const preferred = hashToName.get(entry.hash >>> 0);
-        const filename = preferred ?? this.generateFilenameFromHash(entry.hash.toString(16).toUpperCase().padStart(8, '0'), index);
+        const hashHex = (entry.hash >>> 0).toString(16).toUpperCase().padStart(8, '0');
+        const extGuess = this.guessExtensionByHeader(mixFile, entry);
+        const fallbackName = extGuess ? `${hashHex}.${extGuess}` : hashHex;
+        const filename = preferred ?? fallbackName;
 
         files.push({
           filename,
@@ -74,11 +78,13 @@ export class MixParser {
         });
       });
 
-      return {
+      const info = {
         name: file.name,
         size: file.size,
         files
       };
+      console.log('[MixParser] parsed mix', { name: info.name, files: info.files.length })
+      return info;
     } catch (error) {
       console.error('Failed to parse MIX file:', error);
       throw error;
@@ -87,17 +93,36 @@ export class MixParser {
 
   static async extractFile(mixFile: File, filename: string): Promise<VirtualFile | null> {
     try {
+      console.log('[MixParser] extractFile request', { mix: mixFile.name, filename })
       const arrayBuffer = await mixFile.arrayBuffer();
       const dataStream = new DataStream(arrayBuffer);
       const mixFileObj = new MixFile(dataStream);
 
       // 检查文件是否存在
-      if (!mixFileObj.containsFile(filename)) {
-        return null;
+      if (mixFileObj.containsFile(filename)) {
+        const vf = mixFileObj.openFile(filename);
+        console.log('[MixParser] extractFile by name success', { filename, size: vf.getSize() })
+        return vf;
       }
 
-      // 提取文件
-      return mixFileObj.openFile(filename);
+      // 回退：如果文件名看起来是 8位十六进制（可带扩展名），直接按 id 尝试
+      const patterns = [
+        /^file_([0-9A-Fa-f]{8})(?:\.[^.]+)?$/, // 兼容旧占位名
+        /^([0-9A-Fa-f]{8})(?:\.[^.]+)?$/,
+      ];
+      for (const re of patterns) {
+        const m = filename.match(re);
+        if (m) {
+          const id = parseInt(m[1], 16) >>> 0;
+          if (mixFileObj.containsId(id)) {
+            const vf = mixFileObj.openById(id, filename);
+            console.log('[MixParser] extractFile by id success', { id: '0x' + id.toString(16).toUpperCase(), size: vf.getSize() })
+            return vf;
+          }
+        }
+      }
+      console.warn('[MixParser] extractFile not found', { filename })
+      return null;
     } catch (error) {
       console.error('Failed to extract file from MIX:', error);
       return null;
@@ -109,15 +134,36 @@ export class MixParser {
     return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : '';
   }
 
-  private static generateFilenameFromHash(hashHex: string, index: number): string {
-    // 常见RA2文件扩展名映射
-    const commonExtensions = ['shp', 'vxl', 'pcx', 'wav', 'ini', 'pal', 'tmp', 'hva'];
-
-    // 根据哈希值的某些特征来选择扩展名
-    const hashNum = parseInt(hashHex, 16);
-    const extensionIndex = hashNum % commonExtensions.length;
-    const extension = commonExtensions[extensionIndex];
-
-    return `file_${hashHex}.${extension}`;
+  // 粗略的头部嗅探来推测扩展名（有限字节，不解码全文件）
+  private static guessExtensionByHeader(mix: MixFile, entry: MixEntry): string | '' {
+    try {
+      if (entry.length === 768) return 'pal'
+      const sliceLen = Math.min(512, entry.length)
+      const vf = (mix as any).openSliceById ? (mix as any).openSliceById(entry.hash, sliceLen) : null
+      if (!vf) return ''
+      const s = vf.stream
+      s.seek(0)
+      const head32 = s.readString(Math.min(32, s.byteLength))
+      if (head32.startsWith('JASC-PAL')) return 'pal'
+      if (head32.startsWith('XCC by Olaf')) return 'dat'
+      if (head32.startsWith('Voxel Animation')) return 'vxl'
+      if (head32.startsWith('RIFF')) return 'wav'
+      s.seek(0)
+      const b0 = s.readUint8()
+      if (b0 === 0x0A) return 'pcx'
+      s.seek(0)
+      const sample = s.readString(Math.min(256, s.byteLength)).replace(/\0/g, '')
+      if (sample) {
+        const visible = sample.split('').filter((ch: string) => (ch >= ' ' && ch <= '~') || ch === '\n' || ch === '\r' || ch === '\t').length
+        const ratio = visible / sample.length
+        if (ratio > 0.9) {
+          if (sample.includes('[') && sample.includes(']') && sample.includes('=')) return 'ini'
+          return 'txt'
+        }
+      }
+      return ''
+    } catch {
+      return ''
+    }
   }
 }

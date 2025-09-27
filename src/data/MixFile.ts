@@ -126,12 +126,14 @@ export class MixFile {
 
   public containsFile(filename: string): boolean { // 'e' in original
     // Filenames in MIX are typically case-insensitive. MixEntry.hashFilename handles uppercasing.
-    return this.index.has(MixEntry.hashFilename(filename));
+    const normalized = filename.replace(/\//g, "\\");
+    return this.index.has(MixEntry.hashFilename(normalized));
   }
 
   public openFile(filename: string): VirtualFile { // 'e' in original filename
     // Filenames in MIX are typically case-insensitive.
-    const fileId = MixEntry.hashFilename(filename);
+    const normalized = filename.replace(/\//g, "\\");
+    const fileId = MixEntry.hashFilename(normalized);
     const entry = this.index.get(fileId); // 't' in original
 
     if (!entry) {
@@ -146,6 +148,44 @@ export class MixFile {
       filename,
       this.dataStart + entry.offset, // entry.offset is relative to dataStart
       entry.length
+    );
+  }
+
+  /**
+   * 直接通过 id (索引中的散列/标识) 打开条目。
+   * 用作回退（例如 UI 使用占位名 file_XXXXXXXX.ext）。
+   */
+  public containsId(id: number): boolean {
+    return this.index.has(id >>> 0);
+  }
+
+  public openById(id: number, filename?: string): VirtualFile {
+    const entry = this.index.get(id >>> 0);
+    if (!entry) {
+      throw new Error(`File id 0x${(id >>> 0).toString(16).toUpperCase()} not found`);
+    }
+    return VirtualFile.factory(
+      this.stream,
+      filename ?? `file_${(id >>> 0).toString(16).toUpperCase()}`,
+      this.dataStart + entry.offset,
+      entry.length
+    );
+  }
+
+  /**
+   * 打开指定 id 的前 length 字节视图，用于类型嗅探。
+   */
+  public openSliceById(id: number, length: number): VirtualFile {
+    const entry = this.index.get(id >>> 0);
+    if (!entry) {
+      throw new Error(`File id 0x${(id >>> 0).toString(16).toUpperCase()} not found`);
+    }
+    const sliceLen = Math.max(0, Math.min(length, entry.length));
+    return VirtualFile.factory(
+      this.stream,
+      `slice_${(id >>> 0).toString(16).toUpperCase()}`,
+      this.dataStart + entry.offset,
+      sliceLen
     );
   }
 
