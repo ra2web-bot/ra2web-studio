@@ -48,9 +48,9 @@ export class MixFile {
 
   private parseRaHeader(): number {
     const e = this.stream;
-    var t: any = e.readUint8Array(80),
+    var t: any = e.mapUint8Array(80),
       i: any = new BlowfishKey().decryptKey(t),
-      r: any = e.readUint32Array(2);
+      r: any = e.mapUint32Array(2);
 
     const s = new Blowfish(i);
     let a = new DataStream(s.decrypt(r));
@@ -60,7 +60,7 @@ export class MixFile {
     a.readUint32(), (e.position = this.headerStart);
     (i = 6 + t * MixEntry.size),
       (t = ((3 + i) / 4) | 0),
-      (r = e.readUint32Array(t + (t % 2)));
+      (r = e.mapUint32Array(t + (t % 2)));
 
     a = new DataStream(s.decrypt(r));
 
@@ -96,9 +96,9 @@ export class MixFile {
 
         if (r < 5) {
           console.log(`[Our] Entry ${r + 1}: hash=0x${i.hash.toString(16).toUpperCase()}, offset=${i.offset}, length=${i.length}`);
-          // 显示当前位置的原始字节数据
+          // 显示当前位置的原始字节数据（避免 DataStream.buffer 触发整体拷贝）
           const currentPos = e.position - 12; // 回到条目开始位置
-          const rawBytes = new Uint8Array(e.buffer, e.byteOffset + currentPos, 12);
+          const rawBytes = new Uint8Array(e.dataView.buffer, e.dataView.byteOffset + currentPos, 12);
           console.log(`[Our] Entry ${r + 1} raw bytes:`, Array.from(rawBytes));
         }
 
@@ -144,7 +144,7 @@ export class MixFile {
     // 'VirtualFile.factory' in original was i.VirtualFile.factory
     // It expects the source DataStream (or DataView), filename, absolute offset, and length.
     return VirtualFile.factory(
-      this.stream, // Pass the DataStream, not the DataView
+      this.stream.dataView,
       filename,
       this.dataStart + entry.offset, // entry.offset is relative to dataStart
       entry.length
@@ -165,7 +165,7 @@ export class MixFile {
       throw new Error(`File id 0x${(id >>> 0).toString(16).toUpperCase()} not found`);
     }
     return VirtualFile.factory(
-      this.stream,
+      this.stream.dataView,
       filename ?? `file_${(id >>> 0).toString(16).toUpperCase()}`,
       this.dataStart + entry.offset,
       entry.length
@@ -182,7 +182,7 @@ export class MixFile {
     }
     const sliceLen = Math.max(0, Math.min(length, entry.length));
     return VirtualFile.factory(
-      this.stream,
+      this.stream.dataView,
       `slice_${(id >>> 0).toString(16).toUpperCase()}`,
       this.dataStart + entry.offset,
       sliceLen
