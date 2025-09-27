@@ -7,7 +7,7 @@ interface ToolbarProps {
   loading?: boolean
 }
 
-const Toolbar: React.FC<ToolbarProps> = ({ mixFiles, onFileOpen, loading = false }) => {
+const Toolbar: React.FC<ToolbarProps> = ({ mixFiles, onFileOpen, loading: _loading }) => {
   const handleFileOpen = () => {
     const input = document.createElement('input')
     input.type = 'file'

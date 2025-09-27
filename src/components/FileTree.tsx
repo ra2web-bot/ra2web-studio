@@ -78,7 +78,7 @@ const FileTree: React.FC<FileTreeProps> = ({ mixFiles, selectedFile, onFileSelec
         type: 'folder',
         path: mixData.info.name,
         mixName: mixData.info.name,
-        children: mixData.info.files.map(file => ({
+        children: mixData.info.files.map((file: any) => ({
           name: file.filename,
           type: 'file',
           path: `${mixData.info.name}/${file.filename}`,

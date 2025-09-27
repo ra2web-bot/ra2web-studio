@@ -170,7 +170,7 @@ const ShpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[] }> = (
 
         const img = shp.getImage(Math.min(frame, shp.numImages - 1))
         const rgba = rgbaFromIndexed(img.imageData, img.width, img.height, clampedPalette, 0)
-        const imageData = new ImageData(rgba, img.width, img.height)
+        const imageData = new ImageData(rgba as any, img.width, img.height)
         ctx.putImageData(imageData, img.x, img.y)
 
         setInfo({ w: safeW, h: safeH, frames: shp.numImages })

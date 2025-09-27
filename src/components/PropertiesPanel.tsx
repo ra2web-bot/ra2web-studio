@@ -26,7 +26,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedFile, mixFile
 
     // 查找对应的MIX文件和文件信息
     const mixData = mixFiles.find(mix => mix.info.name === mixName)
-    const fileInfo = mixData?.info.files.find(file => file.filename === filename)
+    const fileInfo = mixData?.info.files.find((file: any) => file.filename === filename)
 
     const baseProps = {
       name: filename,
@@ -41,7 +41,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedFile, mixFile
       case 'shp':
         return {
           ...baseProps,
-          format: 'SHP (Westwood Image Format)',
+          format: 'SHP (Chronodivide Image Format)',
           frames: 12,
           width: 64,
           height: 48,
@@ -51,7 +51,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedFile, mixFile
       case 'vxl':
         return {
           ...baseProps,
-          format: 'VXL (Westwood 3D Model Format)',
+          format: 'VXL (Chronodivide 3D Model Format)',
           sections: 3,
           voxels: 1248,
           bounds: { min: [-32, -16, -8], max: [32, 16, 24] },

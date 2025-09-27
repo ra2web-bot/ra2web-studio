@@ -17,26 +17,27 @@ const a = new Int8Array([
 ]);
 
 class i {
-  key1: Uint32Array<ArrayBuffer>;
-  key2: Uint32Array<ArrayBuffer>;
+  key1: Uint32Array;
+  key2: Uint32Array;
   len: number;
   constructor() {
     (this.key1 = new Uint32Array(64)),
-      (this.key2 = new Uint32Array(64));
+      (this.key2 = new Uint32Array(64)),
+      (this.len = 0);
   }
 }
 
 export class BlowfishKey {
   pubkey: i;
-  glob1: Uint32Array<ArrayBuffer>;
-  glob2: Uint32Array<ArrayBuffer>;
-  glob1_hi: Uint32Array<ArrayBuffer>;
-  glob1_hi_inv: Uint32Array<ArrayBuffer>;
+  glob1: Uint32Array;
+  glob2: Uint32Array;
+  glob1_hi: Uint32Array;
+  glob1_hi_inv: Uint32Array;
   glob1_bitlen: any;
-  glob1_len_x2: number;
-  glob1_hi_bitlen: number;
-  glob1_hi_inv_lo: number;
-  glob1_hi_inv_hi: number;
+  glob1_len_x2!: number;
+  glob1_hi_bitlen!: number;
+  glob1_hi_inv_lo!: number;
+  glob1_hi_inv_hi!: number;
 
   constructor() {
     (this.pubkey = new i()),
@@ -45,11 +46,11 @@ export class BlowfishKey {
       (this.glob1_hi = new Uint32Array(4)),
       (this.glob1_hi_inv = new Uint32Array(4));
   }
-  init_bignum(e, t, i) {
+  init_bignum(e: any, t: any, i: any) {
     for (let r = 0; r < i; r++) e[r] = 0;
     e[0] = t;
   }
-  move_key_to_big(e, t, i, r) {
+  move_key_to_big(e: any, t: any, i: any, r: any) {
     let s;
     s = 0 != (128 & t[0]) ? 255 : 0;
     const a = new Uint8Array(e.buffer, e.byteOffset);
@@ -57,7 +58,7 @@ export class BlowfishKey {
     for (; n > i; n--) a[n - 1] = s;
     for (; 0 < n; n--) a[n - 1] = t[i - n];
   }
-  key_to_bignum(e, t, i) {
+  key_to_bignum(e: any, t: any, i: any) {
     let r,
       s,
       a = 0;
@@ -67,15 +68,15 @@ export class BlowfishKey {
           r = (((r << 8) >>> 0) | t[a + s + 1]) >>> 0;
         a += 1 + (127 & t[a]);
       } else (r = t[a]), a++;
-      r <= 4 * i && this.move_key_to_big(e, t.subarray(a), r, i);
+      r <= 4 * i && this.move_key_to_big(e, new Uint32Array(t.subarray(a).buffer, t.subarray(a).byteOffset, Math.min(r, i)), r, i);
     }
   }
-  len_bignum(e, t) {
+  len_bignum(e: any, t: any) {
     let i = t - 1;
     for (; 0 <= i && 0 === e[i]; ) i--;
     return i + 1;
   }
-  bitlen_bignum(e, t) {
+  bitlen_bignum(e: any, t: any) {
     var i;
     let r, s;
     if (0 === (i = this.len_bignum(e, t))) return 0;
@@ -116,17 +117,17 @@ export class BlowfishKey {
     var e = ((this.pubkey.len - 1) / 8) | 0;
     return ((1 + ((55 / e) | 0)) * (1 + e)) >>> 0;
   }
-  cmp_bignum(e, t, i) {
+  cmp_bignum(e: any, t: any, i: any) {
     for (; 0 < i; ) {
       if (e[--i] < t[i]) return -1;
       if (e[i] > t[i]) return 1;
     }
     return 0;
   }
-  mov_bignum(e, t, i) {
+  mov_bignum(e: any, t: any, i: any) {
     for (let r = 0; r < i; r++) e[r] = t[r];
   }
-  shr_bignum(e, t, i) {
+  shr_bignum(e: any, t: any, i: any) {
     let r;
     var s = (t / 32) | 0;
     if (0 < s) {
@@ -141,7 +142,7 @@ export class BlowfishKey {
       e[r] = e[r] >>> t;
     }
   }
-  shl_bignum(e, t, i) {
+  shl_bignum(e: Uint32Array, t: number, i: number) {
     let r;
     var s = (t / 32) | 0;
     if (0 < s) {
@@ -156,11 +157,11 @@ export class BlowfishKey {
       e[0] = (e[0] << t) >>> 0;
     }
   }
-  sub_bignum(e, t, i, r, s) {
+  sub_bignum(e: any, t: any, i: any, r: any, s: any) {
     var a, n;
     s += s;
     var o = new Uint16Array(t.buffer, t.byteOffset),
-      l = new Uint16Array(i.buffer, i.byteOffset);
+      l = new Uint16Array(i.buffer as ArrayBuffer, i.byteOffset);
     const c = new Uint16Array(e.buffer, e.byteOffset);
     let h = 0;
     for (; -1 != --s; )
@@ -171,18 +172,18 @@ export class BlowfishKey {
         h++;
     return r;
   }
-  sub_bignum_word(e, t, i, r, s) {
+  sub_bignum_word(e: any, t: any, i: any, r: any, s: any) {
     var a, n;
     let o = 0;
     for (; -1 != --s; )
       (a = t[o]),
-        (n = i[o]),
+        (n = (i as Uint32Array)[o]),
         (e[o] = (a - n - r) & 65535),
         (r = 0 != ((a - n - r) & 65536) ? 1 : 0),
         o++;
     return r;
   }
-  inv_bignum(e, t, i) {
+  inv_bignum(e: Uint32Array, t: Uint32Array, i: number) {
     const r = new Uint32Array(64);
     var s;
     let a,
@@ -209,11 +210,11 @@ export class BlowfishKey {
         0 === a && (o--, (a = 2147483648));
     this.init_bignum(r, 0, i);
   }
-  inc_bignum(e, t) {
+  inc_bignum(e: Uint32Array, t: number) {
     let i = 0;
     for (; 0 == ++e[i] && 0 < --t; ) i++;
   }
-  init_two_dw(e, t) {
+  init_two_dw(e: Uint32Array, t: number) {
     this.mov_bignum(this.glob1, e, t),
       (this.glob1_bitlen = this.bitlen_bignum(this.glob1, t)),
       (this.glob1_len_x2 = ((this.glob1_bitlen + 15) / 16) | 0),
@@ -237,7 +238,7 @@ export class BlowfishKey {
       (this.glob1_hi_inv_hi =
         (this.glob1_hi_inv[0] >>> 16) & 65535);
   }
-  mul_bignum_word(e, t, i, r) {
+  mul_bignum_word(e: Uint32Array, t: Uint32Array, i: number, r: number) {
     let s, a;
     var n = new Uint16Array(t.buffer, t.byteOffset);
     let o = (a = 0);
@@ -248,23 +249,25 @@ export class BlowfishKey {
         (a >>>= 16);
     e[o] += 65535 & a;
   }
-  mul_bignum(e, t, i, r) {
+  mul_bignum(e: any, t: any, i: any, r: any) {
     let s;
+    // @ts-ignore
     var a = new Uint16Array(i.buffer, i.byteOffset);
     let n = new Uint16Array(e.buffer, e.byteOffset);
     this.init_bignum(e, 0, 2 * r);
     let o = 0;
     for (s = 0; s < 2 * r; s++)
+      // @ts-ignore
       this.mul_bignum_word(n.subarray(o), t, a[o], 2 * r), o++;
   }
-  not_bignum(e, t) {
+  not_bignum(e: any, t: any) {
     let i;
     for (i = 0; i < t; i++) e[i] = ~e[i] >>> 0;
   }
-  neg_bignum(e, t) {
+  neg_bignum(e: any, t: any) {
     this.not_bignum(e, t), this.inc_bignum(e, t);
   }
-  get_mulword(e, t) {
+  get_mulword(e: any, t: any) {
     let i =
       (((((((((65535 & (65535 ^ e[t - 1])) * this.glob1_hi_inv_lo +
         65536) >>>
@@ -284,11 +287,11 @@ export class BlowfishKey {
       0;
     return 65535 < i && (i = 65535), 65535 & i;
   }
-  dec_bignum(e, t) {
+  dec_bignum(e: any, t: any) {
     let i = 0;
     for (; --e[i] >>> 0 == 4294967295 && 0 < --t; ) i++;
   }
-  calc_a_bignum(e, t, i, r) {
+  calc_a_bignum(e: any, t: any, i: any, r: any) {
     var s;
     let a;
     var n = this.glob1,
@@ -311,9 +314,11 @@ export class BlowfishKey {
         t--;
         var c = e.subarray(t);
         0 < l &&
+          // @ts-ignore
           (this.mul_bignum_word(c, this.glob1, l, 2 * r),
           0 == (32768 & e[i]) &&
             0 !==
+              // @ts-ignore
               this.sub_bignum_word(
                 c,
                 c,
@@ -328,7 +333,7 @@ export class BlowfishKey {
     }
     this.mov_bignum(e, this.glob2, r);
   }
-  clear_tmp_vars(e) {
+  clear_tmp_vars(e: any) {
     this.init_bignum(this.glob1, 0, e),
       this.init_bignum(this.glob2, 0, e),
       this.init_bignum(this.glob1_hi_inv, 0, 4),
@@ -339,7 +344,7 @@ export class BlowfishKey {
       (this.glob1_hi_inv_lo = 0),
       (this.glob1_hi_inv_hi = 0);
   }
-  calc_a_key(e, t, i, r, s) {
+  calc_a_key(e: any, t: any, i: any, r: any, s: any) {
     var a,
       n,
       o = new Uint32Array(64);
@@ -367,11 +372,11 @@ export class BlowfishKey {
         (c >>>= 1);
     this.init_bignum(o, 0, n), this.clear_tmp_vars(s);
   }
-  memcpy(e, t, i) {
+  memcpy(e: any, t: any, i: any) {
     let r = 0;
     for (; 0 != i--; ) (e[r] = t[r]), r++;
   }
-  process_predata(e, t, i) {
+  process_predata(e: any, t: any, i: any) {
     var r = new Uint32Array(64),
       s = new Uint32Array(64);
     let a = 0,
@@ -386,15 +391,17 @@ export class BlowfishKey {
           this.pubkey.key1,
           64,
         ),
+        // @ts-ignore
         this.memcpy(i.subarray(n), new Uint8Array(s.buffer), o),
         (t -= 1 + o),
         (a += 1 + o),
         (n += o);
   }
-  decryptKey(e) {
+  decryptKey(e: any) {
     this.init_pubkey();
     let t = new Uint8Array(256);
     return (
+      // @ts-ignore
       this.process_predata(e, this.len_predata(), t),
       t.subarray(0, 56)
     );

@@ -15,7 +15,7 @@ export class MixEntry {
     }
 
     /**
-     * Calculates the Westwood-specific filename hash.
+     * Calculates the Chronodivide-specific filename hash.
      * The filename is first uppercased.
      * Then, it's padded to be a multiple of 4 bytes long.
      * The padding involves appending a character whose code is the original length modulo 4 (1, 2, or 3).

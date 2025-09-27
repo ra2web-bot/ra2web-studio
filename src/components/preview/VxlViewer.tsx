@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { MixParser, MixFileInfo } from '../../services/MixParser'
@@ -32,7 +32,7 @@ const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[] }> = (
     let camera: THREE.PerspectiveCamera | null = null
     let controls: OrbitControls | null = null
     let animationId = 0
-    let mesh: THREE.Mesh | null = null
+    // let _voxelMesh: THREE.Mesh | null = null
 
     async function load() {
       setLoading(true)
@@ -130,7 +130,7 @@ const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[] }> = (
       camera = null
       renderer = null
       controls = null
-      mesh = null
+      // _voxelMesh = null
     }
   }, [selectedFile, mixFiles])
 

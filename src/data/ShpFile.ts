@@ -71,7 +71,7 @@ export class ShpFile {
     }
 
     const frameHeaders: ShpFrameHeader[] = [];
-    const frameHeaderBaseOffset = s.position; // Current position after global header (or start for TS)
+    // const _frameHeaderBaseOffset = s.position; // Current position after global header (or start for TS)
 
     // In RA2 SHP (TD), frame offsets are listed first. In TS SHP, frame headers (including offsets) are listed.
     // The original code reads frame headers directly. This implies it might be geared for TS SHP frame header structures
@@ -85,7 +85,7 @@ export class ShpFile {
     // This is more like SHP(TS) frame directory, or a pre-processed list.
     // Let's stick to the original code's structure for `readFrameHeader`:
 
-    const frameDescriptorSize = 2 + 2 + 2 + 2 + 1 + 3 + 4 + 4 + 4; // Size of structure read by readFrameHeader
+    // const _frameDescriptorSize = 2 + 2 + 2 + 2 + 1 + 3 + 4 + 4 + 4; // Size of structure read by readFrameHeader
     // For RA2 SHP, the initial block is just offsets (numImages * 4 bytes)
     // The provided `readFrameHeader` seems to be reading a richer structure than just an offset.
 
@@ -209,7 +209,7 @@ export class ShpFile {
           return paddedData;
       }
       return data;
-    } else if (compressionType === 2) { // RLE variant ( Westwood Format 2 / Type 2 SHP)
+    } else if (compressionType === 2) { // RLE variant ( Chronodivide Format 2 / Type 2 SHP)
         // Data is series of [length_word, byte*length]
         // This format is less common for SHP(TD), more for WW TMP files. SHP(TD) Type 2 is different.
         // The original code interprets this as: read Uint16 for line length, then read that many bytes.

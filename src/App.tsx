@@ -1,4 +1,3 @@
-import React from 'react'
 import MixEditor from './components/MixEditor'
 
 function App() {

@@ -27,9 +27,9 @@ export class MixFile {
     // Original logic: t = 0 == (e & ~(r.Checksum | r.Encrypted));
     // This checks if flags, after clearing Checksum and Encrypted bits, is zero.
     // Meaning, flags only contains Checksum, Encrypted, or both, or is zero.
-    const isWestwoodMix = (flags & ~(MixFileFlags.Checksum | MixFileFlags.Encrypted)) === 0;
+    const isChronodivideMix = (flags & ~(MixFileFlags.Checksum | MixFileFlags.Encrypted)) === 0;
 
-    if (isWestwoodMix) {
+    if (isChronodivideMix) {
       if ((flags & MixFileFlags.Encrypted) !== 0) {
         // RA/TS Encrypted header
         this.dataStart = this.parseRaHeader();
@@ -37,12 +37,12 @@ export class MixFile {
       }
       // else TD/RA unencrypted header (or flags = 0), continue to parseTdHeader with current stream
     } else {
-      // Not a Westwood MIX file based on flags, or potentially a TD/RA file with no flags set (stream was 0).
+      // Not a Chronodivide MIX file based on flags, or potentially a TD/RA file with no flags set (stream was 0).
       // Original logic: else this.stream.seek(0);
       // Try to parse as TD header from the beginning of the file.
       this.stream.seek(0);
     }
-    // For unencrypted Westwood Mix or non-Westwood (seeked to 0)
+    // For unencrypted Chronodivide Mix or non-Chronodivide (seeked to 0)
     this.dataStart = this.parseTdHeader(this.stream);
   }
 
@@ -211,7 +211,7 @@ export class MixFile {
   /**
    * 根据哈希值推测文件扩展名（这是一个简化的实现）
    */
-  private getExtensionFromHash(hash: number): string {
+  private getExtensionFromHash(_hash: number): string {
     // 这是一个简化的实现，实际应该通过其他方式确定扩展名
     // 或者在MIX文件中存储文件名映射
     return 'bin';

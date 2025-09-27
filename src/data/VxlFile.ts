@@ -1,4 +1,3 @@
-import * as THREE from 'three'
 import { DataStream } from './DataStream'
 import { VirtualFile } from './vfs/VirtualFile'
 import { VxlHeader } from './vxl/VxlHeader'

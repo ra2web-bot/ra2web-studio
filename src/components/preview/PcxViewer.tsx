@@ -162,7 +162,7 @@ const PcxViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[] }> = (
             console.error('[PcxViewer] getContext(\'2d\') returned null')
             return
           }
-          const imageData = new ImageData(parsed.rgba, parsed.width, parsed.height)
+          const imageData = new ImageData(parsed.rgba as any, parsed.width, parsed.height)
           ctx.putImageData(imageData, 0, 0)
           console.log('[PcxViewer] drew image on canvas', { width: parsed.width, height: parsed.height })
           setInfo({ w: parsed.width, h: parsed.height })

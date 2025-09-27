@@ -68,7 +68,7 @@ const HvaViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[] }> = (
 
         // Create a node per section (axes helper inside)
         const root = new THREE.Group()
-        for (const sec of hva.sections) {
+        for (const _sec of hva.sections) {
           const g = new THREE.Group()
           const axes = new THREE.AxesHelper(5)
           g.add(axes)

@@ -16,8 +16,8 @@ export class DataStream {
   // 检测系统字节序，与原始项目逻辑一致
   public static readonly endianness: boolean = new Int8Array(new Int16Array([1]).buffer)[0] > 0;
 
-  private _buffer: ArrayBuffer;
-  private _dataView: DataView;
+  private _buffer!: ArrayBuffer;
+  private _dataView!: DataView;
   private _byteOffset: number;
   private _byteLength: number;
   private _dynamicSize: boolean;
@@ -89,7 +89,7 @@ export class DataStream {
 
   set dataView(newDataView: DataView | TypedArray) {
     this._byteOffset = newDataView.byteOffset;
-    this._buffer = newDataView.buffer;
+    this._buffer = newDataView.buffer as ArrayBuffer;
     this._dataView = new DataView(this._buffer, this._byteOffset);
     this._byteLength = this._byteOffset + newDataView.byteLength;
   }

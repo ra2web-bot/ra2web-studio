@@ -136,3 +136,4 @@ const PalViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[] }> = (
 export default PalViewer
 
 
+

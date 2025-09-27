@@ -5,7 +5,7 @@ import PreviewPanel from './PreviewPanel'
 import PropertiesPanel from './PropertiesPanel'
 import { MixParser, MixFileInfo } from '../services/MixParser'
 
-interface MixFileData {
+export interface MixFileData {
   file: File
   info: MixFileInfo
 }
@@ -83,7 +83,7 @@ const MixEditor: React.FC = () => {
 
       {/* 底部状态栏 */}
       <div className="h-8 bg-gray-800 border-t border-gray-700 flex items-center px-4 text-sm text-gray-400">
-        RA2Web Studio - 红色警戒2 Mix文件编辑器
+        RA2Web Studio - 王二火大 Mix文件编辑器
         {mixFiles.length > 0 && (
           <span className="ml-4">
             已加载 {mixFiles.length} 个MIX文件，{mixFiles.reduce((sum, mix) => sum + mix.info.files.length, 0)} 个文件

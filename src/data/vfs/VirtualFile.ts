@@ -110,6 +110,6 @@ export class VirtualFile {
    * @returns A File object.
    */
   asFile(mimeType?: string): File {
-    return new File([this.getBytes()], this.filename, { type: mimeType });
+    return new File([new Uint8Array(this.getBytes())], this.filename, { type: mimeType });
   }
 }

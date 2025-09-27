@@ -2,6 +2,7 @@ import { MixFile } from '../data/MixFile';
 import { VirtualFile } from '../data/vfs/VirtualFile';
 import { DataStream } from '../data/DataStream';
 import { MixEntry } from '../data/MixEntry';
+import { GlobalMixDatabase } from './GlobalMixDatabase';
 
 export interface MixFileInfo {
   name: string;
@@ -61,9 +62,13 @@ export class MixParser {
         // 忽略 LMD 解析失败，使用回退方案
       }
 
-      // 将MixEntry转换为MixEntryInfo（优先使用 LMD 名称；无则用8位十六进制 + 推测扩展名）
+      // 预取全局数据库（懒加载）
+      const globalMap = await GlobalMixDatabase.get().catch(() => new Map<number, string>())
+
+      // 将MixEntry转换为MixEntryInfo（优先 LMD；次选 GMD；无则 8位十六进制 + 推测扩展名）
       entries.forEach((entry) => {
-        const preferred = hashToName.get(entry.hash >>> 0);
+        const h = entry.hash >>> 0
+        const preferred = hashToName.get(h) ?? globalMap.get(h);
         const hashHex = (entry.hash >>> 0).toString(16).toUpperCase().padStart(8, '0');
         const extGuess = this.guessExtensionByHeader(mixFile, entry);
         const fallbackName = extGuess ? `${hashHex}.${extGuess}` : hashHex;
@@ -121,6 +126,17 @@ export class MixParser {
           }
         }
       }
+      // 尝试用全局数据库将传入名称映射为真实文件名
+      try {
+        const globalMap = await GlobalMixDatabase.get()
+        const h = MixEntry.hashFilename(filename) >>> 0
+        const alt = globalMap.get(h)
+        if (alt && mixFileObj.containsFile(alt)) {
+          const vf = mixFileObj.openFile(alt)
+          console.log('[MixParser] extractFile by global map success', { requested: filename, resolved: alt, size: vf.getSize() })
+          return vf
+        }
+      } catch {}
       console.warn('[MixParser] extractFile not found', { filename })
       return null;
     } catch (error) {
