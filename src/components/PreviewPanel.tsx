@@ -7,6 +7,9 @@ import HexViewer from './preview/HexViewer'
 import TxtViewer from './preview/TxtViewer'
 import PalViewer from './preview/PalViewer'
 import PcxViewer from './preview/PcxViewer'
+import ShpViewer from './preview/ShpViewer'
+import VxlViewer from './preview/VxlViewer'
+import HvaViewer from './preview/HvaViewer'
 
 type MixFileData = { file: File; info: MixFileInfo }
 
@@ -78,8 +81,20 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({ selectedFile, mixFiles }) =
       { key: 'swatches', label: '色板', Component: PalViewer },
       { key: 'hex', label: '十六进制', Component: HexViewer },
     ],
+    shp: [
+      { key: 'image', label: '图像', Component: ShpViewer },
+      { key: 'hex', label: '十六进制', Component: HexViewer },
+    ],
+    vxl: [
+      { key: 'viewer', label: '3D', Component: VxlViewer },
+      { key: 'hex', label: '十六进制', Component: HexViewer },
+    ],
     pcx: [
       { key: 'image', label: '图像', Component: PcxViewer },
+      { key: 'hex', label: '十六进制', Component: HexViewer },
+    ],
+    hva: [
+      { key: 'viewer', label: '3D', Component: HvaViewer },
       { key: 'hex', label: '十六进制', Component: HexViewer },
     ],
   }
