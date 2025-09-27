@@ -164,14 +164,11 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({ selectedFile, mixFiles }) =
       <div className="p-2 border-t border-gray-700 flex justify-between items-center">
         <div className="flex space-x-2">
           <button className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded transition-colors">
-            缩放
+            鼠标滚轮可缩放
           </button>
           <button className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded transition-colors">
-            旋转
+            鼠标拖动可旋转
           </button>
-        </div>
-        <div className="text-xs text-gray-500">
-          文件大小: 模拟数据
         </div>
       </div>
     </div>

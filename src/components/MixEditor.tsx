@@ -44,6 +44,33 @@ const MixEditor: React.FC = () => {
     setSelectedFile(filePath)
   }, [])
 
+  const handleExport = useCallback(async () => {
+    try {
+      if (!selectedFile) return
+      const slash = selectedFile.indexOf('/')
+      if (slash <= 0) return
+      const mixName = selectedFile.substring(0, slash)
+      const inner = selectedFile.substring(slash + 1)
+      const mix = mixFiles.find(m => m.info.name === mixName)
+      if (!mix) return
+      const vf = await MixParser.extractFile(mix.file, inner)
+      if (!vf) return
+      const bytes = vf.getBytes()
+      const ab = bytes.buffer as ArrayBuffer
+      const blob = new Blob([ab.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)], { type: 'application/octet-stream' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = inner
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('Export failed:', err)
+    }
+  }, [selectedFile, mixFiles])
+
   return (
     <div className="h-full flex flex-col">
       {/* 顶部工具栏 */}
@@ -51,6 +78,8 @@ const MixEditor: React.FC = () => {
         mixFiles={mixFiles.map(mix => mix.file.name)}
         onFileOpen={handleFileOpen}
         loading={loading}
+        selectedFile={selectedFile}
+        onExport={handleExport}
       />
 
       {/* 主内容区域 */}
