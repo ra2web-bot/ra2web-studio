@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { File, Folder } from 'lucide-react'
 import { MixFileData } from './MixEditor'
 
