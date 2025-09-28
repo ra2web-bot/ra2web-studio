@@ -96,9 +96,73 @@ export class MixParser {
     }
   }
 
+  static async parseVirtualFile(vf: VirtualFile, name: string): Promise<MixFileInfo> {
+    try {
+      const dataStream = vf.stream as DataStream
+      const mixFile = new MixFile(dataStream)
+
+      const files: MixEntryInfo[] = []
+      const entries = mixFile.getAllEntries()
+
+      const hashToName = new Map<number, string>()
+      try {
+        const lmdName = 'local mix database.dat'
+        if (mixFile.containsFile(lmdName)) {
+          const v = mixFile.openFile(lmdName)
+          const s = v.stream
+          s.seek(0)
+          const id = s.readString(32)
+          if (id.startsWith('XCC by Olaf van der Spek')) {
+            s.readInt32()
+            const type = s.readInt32()
+            const version = s.readInt32()
+            if (version === 0 && type === 0) {
+              s.readInt32()
+              const count = s.readInt32()
+              for (let i = 0; i < count; i++) {
+                const n = s.readCString()
+                if (!n) continue
+                const h = MixEntry.hashFilename(n)
+                hashToName.set(h >>> 0, n)
+              }
+            }
+          }
+        }
+      } catch {}
+
+      const globalMap = await GlobalMixDatabase.get().catch(() => new Map<number, string>())
+
+      entries.forEach((entry) => {
+        const h = entry.hash >>> 0
+        const preferred = hashToName.get(h) ?? globalMap.get(h)
+        const hashHex = (entry.hash >>> 0).toString(16).toUpperCase().padStart(8, '0')
+        const extGuess = this.guessExtensionByHeader(mixFile, entry)
+        const fallbackName = extGuess ? `${hashHex}.${extGuess}` : hashHex
+        const filename = preferred ?? fallbackName
+
+        files.push({
+          filename,
+          hash: entry.hash,
+          offset: entry.offset,
+          length: entry.length,
+          extension: this.getExtensionFromFilename(filename),
+        })
+      })
+
+      return { name, size: vf.getSize(), files }
+    } catch (error) {
+      console.error('Failed to parse MIX virtual file:', error)
+      throw error
+    }
+  }
+
   static async extractFile(mixFile: File, filename: string): Promise<VirtualFile | null> {
     try {
       console.log('[MixParser] extractFile request', { mix: mixFile.name, filename })
+      // 支持嵌套路径： a.mix/b.mix/c.shp
+      if (filename.includes('/')) {
+        return await this.extractNested(mixFile, filename)
+      }
       const arrayBuffer = await mixFile.arrayBuffer();
       const dataStream = new DataStream(arrayBuffer);
       const mixFileObj = new MixFile(dataStream);
@@ -145,6 +209,51 @@ export class MixParser {
     }
   }
 
+  private static async extractNested(mixFile: File, nestedPath: string): Promise<VirtualFile | null> {
+    const segments = nestedPath.split('/')
+    const arrayBuffer = await mixFile.arrayBuffer()
+    let currentMix = new MixFile(new DataStream(arrayBuffer))
+    let currentVf: VirtualFile | null = null
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i]
+      const isLast = i === segments.length - 1
+      // 先按名称找
+      if (currentMix.containsFile(seg)) {
+        currentVf = currentMix.openFile(seg)
+      } else {
+        // 尝试按 id（8位十六进制）
+        const m = seg.match(/^([0-9A-Fa-f]{8})(?:\.[^.]+)?$/)
+        if (m) {
+          const id = parseInt(m[1], 16) >>> 0
+          if (currentMix.containsId(id)) {
+            currentVf = currentMix.openById(id, seg)
+          } else {
+            // 尝试 GMD 映射
+            try {
+              const g = await GlobalMixDatabase.get()
+              const alt = g.get(id)
+              if (alt && currentMix.containsFile(alt)) {
+                currentVf = currentMix.openFile(alt)
+              }
+            } catch {}
+          }
+        }
+      }
+      if (!currentVf) return null
+      if (isLast) return currentVf
+      // 非最后一段，需把 currentVf 作为子 MIX 继续深入
+      try {
+        const subStream = currentVf.stream as DataStream
+        currentMix = new MixFile(subStream)
+        currentVf = null
+      } catch (e) {
+        console.warn('[MixParser] sub container parse failed', e)
+        return null
+      }
+    }
+    return null
+  }
+
   private static getExtensionFromFilename(filename: string): string {
     const parts = filename.split('.');
     return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : '';
@@ -159,11 +268,33 @@ export class MixParser {
       if (!vf) return ''
       const s = vf.stream
       s.seek(0)
+      // MIX 容器嗅探（XCC 风格）：
+      // 1) RA/TS Chronodivide 标志位（flags 仅包含 Checksum/Encrypted 位）
+      if (s.byteLength >= 4) {
+        const flags = s.readUint32()
+        const masked = flags & ~(0x00010000 | 0x00020000)
+        if (masked === 0 && (flags & (0x00010000 | 0x00020000)) !== 0) {
+          return 'mix'
+        }
+        // 2) TD/RA 非加密头：count (u16) + u32 + entries(count*12)，大小合理
+        s.seek(0)
+        if (s.byteLength >= 6) {
+          const count = s.readUint16()
+          s.readUint32()
+          const tableEnd = 6 + count * 12
+          if (count > 0 && count < 50000 && tableEnd <= entry.length) {
+            return 'mix'
+          }
+        }
+      }
+      s.seek(0)
       const head32 = s.readString(Math.min(32, s.byteLength))
       if (head32.startsWith('JASC-PAL')) return 'pal'
       if (head32.startsWith('XCC by Olaf')) return 'dat'
       if (head32.startsWith('Voxel Animation')) return 'vxl'
       if (head32.startsWith('RIFF')) return 'wav'
+      if (head32.startsWith('CSF ')) return 'csf'
+      if (head32.startsWith('Creative Voice File')) return 'voc'
       s.seek(0)
       const b0 = s.readUint8()
       if (b0 === 0x0A) return 'pcx'

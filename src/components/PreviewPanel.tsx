@@ -9,6 +9,7 @@ import PalViewer from './preview/PalViewer'
 import PcxViewer from './preview/PcxViewer'
 import ShpViewer from './preview/ShpViewer'
 import VxlViewer from './preview/VxlViewer'
+import VxlViewer3D from './preview/VxlViewer3D.tsx'
 import HvaViewer from './preview/HvaViewer'
 
 type MixFileData = { file: File; info: MixFileInfo }
@@ -16,9 +17,11 @@ type MixFileData = { file: File; info: MixFileInfo }
 interface PreviewPanelProps {
   selectedFile: string | null
   mixFiles: MixFileData[]
+  breadcrumbs?: string[]
+  onBreadcrumbClick?: (index: number) => void
 }
 
-const PreviewPanel: React.FC<PreviewPanelProps> = ({ selectedFile, mixFiles }) => {
+const PreviewPanel: React.FC<PreviewPanelProps> = ({ selectedFile, mixFiles, breadcrumbs, onBreadcrumbClick }) => {
   const getFileTypeIcon = (filePath: string) => {
     const extension = filePath.split('.').pop()?.toLowerCase()
 
@@ -86,7 +89,8 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({ selectedFile, mixFiles }) =
       { key: 'hex', label: '十六进制', Component: HexViewer },
     ],
     vxl: [
-      { key: 'viewer', label: '3D', Component: VxlViewer },
+      { key: 'viewer2d', label: '2D帧采样', Component: VxlViewer },
+      { key: 'viewer3d', label: '3D', Component: VxlViewer3D },
       { key: 'hex', label: '十六进制', Component: HexViewer },
     ],
     pcx: [
@@ -123,8 +127,23 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({ selectedFile, mixFiles }) =
 
   return (
     <div className="h-full flex flex-col">
-      {/* 预览头部 */}
+      {/* 预览头部：面包屑 + 文件信息 */}
       <div className="p-4 border-b border-gray-700">
+        {breadcrumbs && breadcrumbs.length > 0 && (
+          <div className="mb-2 text-sm text-gray-300 flex flex-wrap items-center gap-1">
+            {breadcrumbs.map((seg, i) => (
+              <span key={i} className="flex items-center gap-1">
+                <button
+                  className="hover:text-white disabled:text-gray-400 focus:outline-none"
+                  onClick={() => onBreadcrumbClick && onBreadcrumbClick(i)}
+                >
+                  {seg}
+                </button>
+                {i < breadcrumbs.length - 1 && <span className="text-gray-500">/</span>}
+              </span>
+            ))}
+          </div>
+        )}
         <div className="flex items-center space-x-3">
           {getFileTypeIcon(selectedFile)}
           <div>

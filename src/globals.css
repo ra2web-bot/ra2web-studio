@@ -57,4 +57,21 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Dark scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #374151 #111827; /* thumb track */
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-track {
+    background: #111827; /* gray-900 */
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: #374151; /* gray-700 */
+    border-radius: 8px;
+    border: 2px solid #111827; /* to create inset space */
+  }
 }

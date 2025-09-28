@@ -68,7 +68,11 @@ export class BlowfishKey {
           r = (((r << 8) >>> 0) | t[a + s + 1]) >>> 0;
         a += 1 + (127 & t[a]);
       } else (r = t[a]), a++;
-      r <= 4 * i && this.move_key_to_big(e, new Uint32Array(t.subarray(a).buffer, t.subarray(a).byteOffset, Math.min(r, i)), r, i);
+      // 保证以字节切片传入，避免 Uint32Array 在非 4 字节对齐偏移上抛错
+      if (r <= 4 * i) {
+        const srcBytes = (t as Uint8Array).subarray(a, a + r);
+        this.move_key_to_big(e, srcBytes, r, i);
+      }
     }
   }
   len_bignum(e: any, t: any) {
