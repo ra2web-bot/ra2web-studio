@@ -1,14 +1,14 @@
 import React, { useState } from 'react'
-import { ChevronRight, ChevronDown, File, Folder, FolderOpen } from 'lucide-react'
+import { File, Folder } from 'lucide-react'
 import { MixFileData } from './MixEditor'
 
-interface FileTreeNode {
-  name: string
-  type: 'file' | 'folder'
-  children?: FileTreeNode[]
+interface FileItem {
+  filename: string
+  extension: string
+  length: number
   path: string
-  extension?: string
   mixName?: string
+  isMixFile?: boolean
 }
 
 interface FileTreeProps {
@@ -23,119 +23,108 @@ interface FileTreeProps {
 }
 
 const FileTree: React.FC<FileTreeProps> = ({ mixFiles, selectedFile, onFileSelect, container, rootless, navPrefix, onDrillDown }) => {
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
-
-  const toggleFolder = (path: string) => {
-    const newExpanded = new Set(expandedFolders)
-    if (newExpanded.has(path)) {
-      newExpanded.delete(path)
-    } else {
-      newExpanded.add(path)
-    }
-    setExpandedFolders(newExpanded)
+  // 格式化文件大小显示
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 B'
+    const k = 1024
+    const sizes = ['B', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
   }
 
-  const renderNode = (node: FileTreeNode, level: number = 0): React.ReactNode => {
-    const isExpanded = expandedFolders.has(node.path)
-    const isSelected = selectedFile === node.path
-
-    if (node.type === 'folder') {
-      return (
-        <div key={node.path}>
-          <div
-            className={`flex items-center py-1 px-2 hover:bg-gray-700 cursor-pointer ${
-              isSelected ? 'bg-blue-600' : ''
-            }`}
-            style={{ paddingLeft: `${level * 16 + 8}px` }}
-            onClick={() => toggleFolder(node.path)}
-          >
-            {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-            {isExpanded ? <FolderOpen size={16} className="ml-1" /> : <Folder size={16} className="ml-1" />}
-            <span className="ml-2 text-sm">{node.name}</span>
-          </div>
-          {isExpanded && node.children?.map(child => renderNode(child, level + 1))}
-        </div>
-      )
-    } else {
-      return (
-        <div
-          key={node.path}
-          className={`flex items-center py-1 px-2 hover:bg-gray-700 cursor-pointer ${
-            isSelected ? 'bg-blue-600' : ''
-          }`}
-          style={{ paddingLeft: `${level * 16 + 8}px` }}
-          onClick={() => onFileSelect(node.path)}
-          onDoubleClick={() => { if (onDrillDown && node.extension === 'mix') onDrillDown(node.name) }}
-        >
-          <File size={16} className="mr-2" />
-          <span className="text-sm">{node.name}</span>
-        </div>
-      )
-    }
+  // 获取文件类型名称
+  const getFileTypeName = (extension: string): string => {
+    return extension.toLowerCase() || '未知'
   }
 
-  // 构建文件树结构
-  const buildFileTree = (): FileTreeNode[] => {
-    const nodes: FileTreeNode[] = []
+  // 构建文件列表
+  const buildFileList = (): FileItem[] => {
+    const files: FileItem[] = []
     if (rootless && container) {
       // 仅显示当前容器文件列表
       const prefix = navPrefix ? `${navPrefix}/` : `${container.name}/`
       for (const file of container.info.files) {
-        nodes.push({
-          name: file.filename,
-          type: 'file',
-          path: `${prefix}${file.filename}`,
+        files.push({
+          filename: file.filename,
           extension: file.extension,
+          length: file.length,
+          path: `${prefix}${file.filename}`,
           mixName: container.name,
+          isMixFile: file.extension.toLowerCase() === 'mix'
         })
       }
-      return nodes
+      return files
     }
-    // 默认：每个 MIX 作为根节点
+    // 默认：显示所有 MIX 文件中的文件
     mixFiles.forEach(mixData => {
-      const mixNode: FileTreeNode = {
-        name: mixData.info.name,
-        type: 'folder',
-        path: mixData.info.name,
-        mixName: mixData.info.name,
-        children: mixData.info.files.map((file: any) => ({
-          name: file.filename,
-          type: 'file',
-          path: `${mixData.info.name}/${file.filename}`,
+      mixData.info.files.forEach((file: any) => {
+        files.push({
+          filename: file.filename,
           extension: file.extension,
-          mixName: mixData.info.name
-        }))
-      }
-      nodes.push(mixNode)
+          length: file.length,
+          path: `${mixData.info.name}/${file.filename}`,
+          mixName: mixData.info.name,
+          isMixFile: file.extension.toLowerCase() === 'mix'
+        })
+      })
     })
 
-    return nodes
+    return files
   }
 
-  const fileTree = buildFileTree()
+  const fileList = buildFileList()
 
   return (
     <div className="h-full flex flex-col">
       <div className="p-2 text-xs font-semibold text-gray-400 uppercase tracking-wide flex-shrink-0 border-b border-gray-700">
         文件浏览器
       </div>
+
+      {/* 表格头部 */}
+      <div className="flex text-xs font-semibold text-gray-500 uppercase tracking-wide bg-gray-800 border-b border-gray-700">
+        <div className="flex-1 min-w-0 px-2 py-1">文件名</div>
+        <div className="w-16 text-center px-2 py-1">类型</div>
+        <div className="w-20 text-right px-2 py-1">大小</div>
+      </div>
+
+      {/* 表格内容 */}
       <div className="text-sm flex-1 overflow-y-auto">
-        {fileTree.map(node => {
-          // .mix 文件直接下钻
-          if (rootless && node.type === 'file' && node.extension === 'mix' && onDrillDown) {
-            return (
-              <div
-                key={node.path}
-                className={`flex items-center py-1 px-2 hover:bg-gray-700 cursor-pointer ${selectedFile === node.path ? 'bg-blue-600' : ''}`}
-                onClick={() => onFileSelect(node.path)}
-                onDoubleClick={() => onDrillDown(node.name)}
-              >
-                <Folder size={16} className="mr-2" />
-                <span className="text-sm">{node.name}</span>
+        {fileList.map((file, index) => {
+          const isSelected = selectedFile === file.path
+          const isMixFile = file.isMixFile && onDrillDown
+
+          return (
+            <div
+              key={file.path || index}
+              className={`flex items-center hover:bg-gray-700 cursor-pointer border-b border-gray-800 ${
+                isSelected ? 'bg-blue-600' : ''
+              }`}
+              onClick={() => onFileSelect(file.path)}
+              onDoubleClick={() => { if (isMixFile) onDrillDown(file.filename) }}
+            >
+              {/* 文件名列 */}
+              <div className="flex-1 min-w-0 flex items-center px-2 py-1" style={{ minWidth: '175px' }}>
+                {isMixFile ? (
+                  <Folder size={16} className="mr-2 flex-shrink-0" />
+                ) : (
+                  <File size={16} className="mr-2 flex-shrink-0" />
+                )}
+                <span className="truncate text-sm" title={file.filename}>
+                  {file.filename}
+                </span>
               </div>
-            )
-          }
-          return renderNode(node)
+
+              {/* 类型列 */}
+              <div className="w-16 text-center text-xs text-gray-400 px-2 py-1" title={getFileTypeName(file.extension)}>
+                {getFileTypeName(file.extension)}
+              </div>
+
+              {/* 大小列 */}
+              <div className="w-20 text-right text-xs text-gray-400 px-2 py-1" title={`${file.length} 字节`}>
+                {formatFileSize(file.length)}
+              </div>
+            </div>
+          )
         })}
       </div>
     </div>

@@ -145,7 +145,7 @@ const MixEditor: React.FC = () => {
       {/* 主内容区域 */}
       <div className="flex-1 flex min-h-0">
         {/* 左侧文件树 */}
-        <div className="w-64 bg-gray-800 border-r border-gray-700">
+        <div className="w-80 bg-gray-800 border-r border-gray-700">
           <FileTree
             mixFiles={mixFiles}
             selectedFile={selectedFile}
