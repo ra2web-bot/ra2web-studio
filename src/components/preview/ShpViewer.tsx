@@ -111,6 +111,18 @@ const ShpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[] }> = (
     setPaletteList(discoverPalettes)
   }, [discoverPalettes])
 
+  // 重置帧为0，当切换文件时
+  useEffect(() => {
+    if (selectedFile) {
+      console.log('[ShpViewer] selectedFile changed to:', selectedFile, 'frame will be reset to 0')
+      setFrame(0)
+    }
+  }, [selectedFile])
+
+  // 存储SHP和调色板数据，用于帧变化时重新渲染
+  const [shpData, setShpData] = useState<{ shp: any, palette: Rgb[] } | null>(null)
+  const [canvasSize, setCanvasSize] = useState<{ w: number, h: number } | null>(null)
+
   useEffect(() => {
     let cancelled = false
     async function load() {
@@ -153,26 +165,24 @@ const ShpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[] }> = (
         const clampedPalette = palette.slice(0, 256)
         while (clampedPalette.length < 256) clampedPalette.push({ r: 0, g: 0, b: 0 })
 
+        // Calculate canvas size based on the maximum extent of all frames
+        let maxW = shp.width
+        let maxH = shp.height
+        for (let i = 0; i < shp.numImages; i++) {
+          const img = shp.images[i]
+          if (img) {
+            maxW = Math.max(maxW, img.x + img.width)
+            maxH = Math.max(maxH, img.y + img.height)
+          }
+        }
+        const safeW = Math.max(1, maxW | 0)
+        const safeH = Math.max(1, maxH | 0)
+
         if (cancelled) return
-        const canvas = canvasRef.current
-        if (!canvas) return
 
-        // Choose canvas size: use logical canvas (shp.width/height) and draw frame at offsets
-        const useW = Math.max(shp.width, shp.images[frame]?.x + shp.images[frame]?.width)
-        const useH = Math.max(shp.height, shp.images[frame]?.y + shp.images[frame]?.height)
-        const safeW = Math.max(1, useW | 0)
-        const safeH = Math.max(1, useH | 0)
-        canvas.width = safeW
-        canvas.height = safeH
-        const ctx = canvas.getContext('2d')
-        if (!ctx) throw new Error('Failed to get 2D context')
-        ctx.clearRect(0, 0, safeW, safeH)
-
-        const img = shp.getImage(Math.min(frame, shp.numImages - 1))
-        const rgba = rgbaFromIndexed(img.imageData, img.width, img.height, clampedPalette, 0)
-        const imageData = new ImageData(rgba as any, img.width, img.height)
-        ctx.putImageData(imageData, img.x, img.y)
-
+        // 存储SHP和调色板数据，用于后续帧变化时使用
+        setShpData({ shp, palette: clampedPalette })
+        setCanvasSize({ w: safeW, h: safeH })
         setInfo({ w: safeW, h: safeH, frames: shp.numImages })
       } catch (e: any) {
         setError(e?.message || 'Failed to render SHP')
@@ -182,7 +192,54 @@ const ShpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[] }> = (
     }
     load()
     return () => { cancelled = true }
-  }, [selectedFile, mixFiles, frame, palettePath])
+  }, [selectedFile, mixFiles, palettePath])
+
+  // 当帧或SHP数据改变时重新渲染
+  useEffect(() => {
+    if (!shpData || !canvasSize || !info) return
+
+    const canvas = canvasRef.current
+    if (!canvas) {
+      console.warn('[ShpViewer] canvasRef.current is null')
+      return
+    }
+
+    // 设置canvas的实际尺寸
+    canvas.width = canvasSize.w
+    canvas.height = canvasSize.h
+
+    const { shp, palette } = shpData
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      console.error('[ShpViewer] Failed to get 2D context')
+      return
+    }
+
+    console.log(`[ShpViewer] Rendering frame ${frame}/${info.frames - 1}`)
+    console.log(`[ShpViewer] Canvas size: ${canvasSize.w}x${canvasSize.h}`)
+    console.log(`[ShpViewer] Canvas DOM size: ${canvas.width}x${canvas.height}`)
+
+    // 渲染当前帧
+    const img = shp.getImage(Math.min(frame, shp.numImages - 1))
+    console.log(`[ShpViewer] Image size: ${img.width}x${img.height}, offset: ${img.x}x${img.y}`)
+
+    const rgba = rgbaFromIndexed(img.imageData, img.width, img.height, palette, 0)
+    const imageData = new ImageData(rgba as any, img.width, img.height)
+
+    // 计算图像在canvas中的居中位置
+    const offsetX = Math.max(0, (canvasSize.w - img.width) / 2)
+    const offsetY = Math.max(0, (canvasSize.h - img.height) / 2)
+
+    console.log(`[ShpViewer] Calculated offsets: ${offsetX}, ${offsetY}`)
+
+    // 清除画布
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+    // 居中绘制图像
+    ctx.putImageData(imageData, offsetX, offsetY)
+
+    console.log(`[ShpViewer] Image rendered at position: ${offsetX}, ${offsetY}`)
+  }, [frame, shpData, canvasSize, info])
 
   const paletteOptions = useMemo(() => [{ value: '', label: '灰度(无调色板)' }, ...paletteList.map(p => ({ value: p, label: p.split('/').pop() || p }))], [paletteList])
 
@@ -216,7 +273,9 @@ const ShpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[] }> = (
         )}
       </div>
       <div className="flex-1 overflow-auto flex items-center justify-center relative" style={{ backgroundImage: 'repeating-linear-gradient(45deg, #2d2d2d 0, #2d2d2d 12px, #343434 12px, #343434 24px)' }}>
-        <canvas ref={canvasRef} style={{ imageRendering: 'pixelated', maxWidth: '100%', maxHeight: '100%' }} />
+        <div className="flex items-center justify-center" style={{ width: '100%', height: '100%' }}>
+          <canvas ref={canvasRef} style={{ imageRendering: 'pixelated', width: 'auto', height: 'auto' }} />
+        </div>
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center text-gray-400 bg-black/20">加载中...</div>
         )}

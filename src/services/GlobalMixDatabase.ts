@@ -37,23 +37,37 @@ export class GlobalMixDatabase {
     const s = new DataStream(buffer)
     s.seek(0)
     try {
-      const id = s.readString(32)
-      if (!id.startsWith('XCC by Olaf van der Spek')) return new Map()
-      s.readInt32() // size
-      const type = s.readInt32()
-      const version = s.readInt32()
-      if (version !== 0 || type !== 0) return new Map()
-      s.readInt32() // game
-      const count = s.readInt32()
+      // 解析XCC global mix database格式
+      // 格式：game_count + game_data_blocks...
+      // 每个game_data_block：count + entries...
+      // 每个entry：name + description
+
       const map = new Map<number, string>()
-      for (let i = 0; i < count; i++) {
-        const name = s.readCString()
-        if (!name) continue
-        const hash = MixEntry.hashFilename(name) >>> 0
-        if (!map.has(hash)) map.set(hash, name)
+
+      // 读取所有游戏的数据块
+      while (s.position < s.byteLength - 4) {
+        const count = s.readUint32()
+        if (count === 0) break
+
+        for (let i = 0; i < count && s.position < s.byteLength - 4; i++) {
+          const name = s.readCString()
+          if (!name) break
+
+          const description = s.readCString()
+          if (!description) break
+
+          // 使用与XCC相同的哈希算法
+          const hash = MixEntry.hashFilename(name) >>> 0
+          if (!map.has(hash)) {
+            map.set(hash, name)
+          }
+        }
       }
+
+      console.log('GlobalMixDatabase loaded:', map.size, 'entries')
       return map
-    } catch {
+    } catch (error) {
+      console.error('Failed to parse global mix database:', error)
       return new Map()
     }
   }

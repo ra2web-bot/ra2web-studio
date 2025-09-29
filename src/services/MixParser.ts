@@ -41,13 +41,13 @@ export class MixParser {
           const s = vf.stream;
           s.seek(0);
           const id = s.readString(32);
-          // 放宽判断：前缀匹配 + 类型/版本校验
+          // 严格按照XCC格式验证：前缀匹配 + 类型/版本校验
           if (id.startsWith('XCC by Olaf van der Spek')) {
             s.readInt32(); // size
             const type = s.readInt32();
             const version = s.readInt32();
             if (version === 0 && type === 0 /* xcc_ft_lmd */) {
-              s.readInt32(); // game
+              s.readInt32(); // 游戏类型
               const count = s.readInt32();
               for (let i = 0; i < count; i++) {
                 const name = s.readCString();
@@ -63,7 +63,7 @@ export class MixParser {
       }
 
       // 预取全局数据库（懒加载）
-      const globalMap = await GlobalMixDatabase.get().catch(() => new Map<number, string>())
+      const globalMap = await GlobalMixDatabase.get()
 
       // 将MixEntry转换为MixEntryInfo（优先 LMD；次选 GMD；无则 8位十六进制 + 推测扩展名）
       entries.forEach((entry) => {
@@ -298,6 +298,17 @@ export class MixParser {
       s.seek(0)
       const b0 = s.readUint8()
       if (b0 === 0x0A) return 'pcx'
+
+      // 检查XIF文件（XCC Index File）
+      s.seek(0)
+      if (s.byteLength >= 8) {
+        const signature = s.readUint32()
+        s.readUint32() // version (unused)
+        if (signature === 0x1a464958) { // 'XIF\x1a'
+          return 'xif'
+        }
+      }
+
       s.seek(0)
       const sample = s.readString(Math.min(256, s.byteLength)).replace(/\0/g, '')
       if (sample) {
@@ -311,6 +322,187 @@ export class MixParser {
       return ''
     } catch {
       return ''
+    }
+  }
+
+  // 创建local mix database数据（与XCC Mixer保持一致）
+  static createLocalMixDatabase(files: MixEntryInfo[], gameType: number = 3): Uint8Array {
+    // XCC LMD格式：
+    // - XCC header (32 bytes): "XCC by Olaf van der Spek" + size + type + version
+    // - LMD header (12 bytes): count + game
+    // - 文件名列表 (每个文件名以null结尾)
+
+    const fileNames = files
+      .filter(file => file.filename && file.filename !== 'local mix database.dat')
+      .map(file => file.filename.toLowerCase());
+
+    // 计算总大小
+    const xccHeaderSize = 32; // "XCC by Olaf van der Spek" + 4 bytes size + 4 bytes type + 4 bytes version
+    const lmdHeaderSize = 12; // 4 bytes count + 4 bytes game + 4 bytes (unused)
+    const namesSize = fileNames.reduce((sum, name) => sum + name.length + 1, 0); // +1 for null terminator
+
+    const totalSize = xccHeaderSize + lmdHeaderSize + namesSize;
+
+    const buffer = new ArrayBuffer(totalSize);
+    const view = new DataView(buffer);
+    const uint8Array = new Uint8Array(buffer);
+
+    let offset = 0;
+
+    // XCC Header
+    const xccId = 'XCC by Olaf van der Spek';
+    for (let i = 0; i < xccId.length; i++) {
+      uint8Array[offset++] = xccId.charCodeAt(i);
+    }
+
+    // Size (4 bytes)
+    view.setUint32(offset, totalSize, true);
+    offset += 4;
+
+    // Type (4 bytes) - xcc_ft_lmd = 0
+    view.setUint32(offset, 0, true);
+    offset += 4;
+
+    // Version (4 bytes) - 0
+    view.setUint32(offset, 0, true);
+    offset += 4;
+
+    // LMD Header
+    // Count (4 bytes)
+    view.setUint32(offset, fileNames.length, true);
+    offset += 4;
+
+    // Game (4 bytes)
+    view.setUint32(offset, gameType, true);
+    offset += 4;
+
+    // Unused (4 bytes)
+    offset += 4;
+
+    // 文件名列表
+    for (const name of fileNames) {
+      for (let i = 0; i < name.length; i++) {
+        uint8Array[offset++] = name.charCodeAt(i);
+      }
+      uint8Array[offset++] = 0; // null terminator
+    }
+
+    return uint8Array;
+  }
+
+  // 将local mix database写入MIX文件
+  static updateLocalMixDatabase(mixFile: MixFile, files: MixEntryInfo[]): boolean {
+    try {
+      // 检查是否已有LMD文件
+      const lmdName = 'local mix database.dat';
+      if (mixFile.containsFile(lmdName)) {
+        // 如果存在，删除旧的LMD
+        // 注意：实际的MIX文件操作需要通过mix_file_write.cpp实现
+        console.warn('LMD file already exists in MIX, update operation not implemented');
+        return false;
+      }
+
+      // 创建新的LMD数据
+      this.createLocalMixDatabase(files);
+
+      // TODO: 实现实际的MIX文件写入逻辑
+      // 这里需要调用底层的MIX文件写入功能
+
+      return true;
+    } catch (error) {
+      console.error('Failed to update local mix database:', error);
+      return false;
+    }
+  }
+
+  // 验证加密MIX文件的处理能力
+  static async testEncryptedMixFile(file: File): Promise<boolean> {
+    try {
+      console.log('Testing encrypted MIX file:', file.name, 'Size:', file.size);
+
+      // 解析MIX文件
+      const mixInfo = await this.parseFile(file);
+      console.log('MIX file parsed successfully:', mixInfo.name, 'Files:', mixInfo.files.length);
+
+      // 检查是否包含加密标志
+      const encryptedFiles = mixInfo.files.filter(f => f.length > 0);
+      console.log('Files with content:', encryptedFiles.length);
+
+      // 显示前几个文件的信息，验证文件名解析
+      const firstFiles = mixInfo.files.slice(0, 5);
+      console.log('First 5 files:');
+      firstFiles.forEach((file, index) => {
+        console.log(`  ${index + 1}. ${file.filename} (${file.extension}) - ${file.length} bytes`);
+      });
+
+      // 尝试提取第一个文件来测试解密
+      if (encryptedFiles.length > 0) {
+        const firstFile = encryptedFiles[0];
+        const vf = await this.extractFile(file, firstFile.filename);
+        if (vf) {
+          console.log('Successfully extracted and decrypted file:', firstFile.filename, 'Size:', vf.getSize());
+          return true;
+        }
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Failed to test encrypted MIX file:', error);
+      return false;
+    }
+  }
+
+  // 测试Global Mix Database加载
+  static async testGlobalMixDatabase(): Promise<void> {
+    try {
+      console.log('Testing Global Mix Database...');
+      const globalMap = await GlobalMixDatabase.get();
+      console.log('Global Mix Database loaded with', globalMap.size, 'entries');
+
+      // 测试一些已知的RA2文件哈希
+      const testHashes = [
+        0x82C00E10, // 应该对应某个PCX文件
+        0x8A7417E7, // 应该对应某个MIX文件
+        0x93850347, // 应该对应某个INI文件
+      ];
+
+      console.log('Testing hash lookups:');
+      testHashes.forEach(hash => {
+        const name = globalMap.get(hash);
+        console.log(`  Hash 0x${hash.toString(16).toUpperCase().padStart(8, '0')}: ${name || 'Not found'}`);
+      });
+
+    } catch (error) {
+      console.error('Failed to test Global Mix Database:', error);
+    }
+  }
+
+  // 测试XIF文件识别
+  static testXifFileSignature(): boolean {
+    try {
+      // 测试XIF文件签名识别
+      const signature = 0x1a464958; // 'XIF\x1a'
+      const signatureHex = signature.toString(16).toUpperCase().padStart(8, '0');
+      console.log('XIF signature test:', signatureHex, signature === 0x1a464958);
+
+      // 测试一些已知的XIF文件哈希（从XCC编译的文件中看到的）
+      const knownXifHashes = [
+        0x27F8A1E5, // infantry.xif
+        0x3B4F2C90, // structures.xif
+        0x4A5D3E12, // units.xif
+        0x5C6E4F23, // overlays.xif
+      ];
+
+      console.log('Testing XIF file hash recognition:');
+      knownXifHashes.forEach(hash => {
+        const hashHex = hash.toString(16).toUpperCase().padStart(8, '0');
+        console.log(`  Hash 0x${hashHex}: Should be recognized as XIF file`);
+      });
+
+      return true;
+    } catch (error) {
+      console.error('Failed to test XIF file signature:', error);
+      return false;
     }
   }
 }

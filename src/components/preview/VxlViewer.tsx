@@ -26,6 +26,9 @@ const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[] }> = (
   const [frameIndex, setFrameIndex] = useState<number>(0)
 
   function render2DFrame(mount: HTMLDivElement, vxl: VxlFile, palette: Uint8Array, frameIdx: number, frameCount: number) {
+    // 清除之前的内容
+    mount.innerHTML = ''
+
     const theta = (frameIdx / Math.max(1, frameCount)) * Math.PI * 2
     const cosT = Math.cos(theta)
     const sinT = Math.sin(theta)
@@ -110,6 +113,17 @@ const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[] }> = (
     mount.appendChild(canvas)
   }
 
+  // 重置帧索引为0，当切换文件时
+  useEffect(() => {
+    if (selectedFile) {
+      console.log('[VxlViewer] selectedFile changed to:', selectedFile, 'frameIndex will be reset to 0')
+      setFrameIndex(0)
+    }
+  }, [selectedFile])
+
+  // 存储VXL和调色板数据，用于帧变化时重新渲染
+  const [vxlData, setVxlData] = useState<{ vxl: VxlFile, palette: Uint8Array } | null>(null)
+
   useEffect(() => {
     let disposed = false
     async function load() {
@@ -127,9 +141,11 @@ const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[] }> = (
         const vxl = new VxlFile(vf)
         if (vxl.sections.length === 0) throw new Error('Failed to parse VXL')
         const pal = buildDefaultPalette()
-        const mount = mountRef.current
-        if (!mount) throw new Error('Mount not ready')
-        if (!disposed) render2DFrame(mount, vxl, pal, frameIndex % Math.max(1, frames), frames)
+
+        if (disposed) return
+
+        // 存储VXL和调色板数据，用于后续帧变化时使用
+        setVxlData({ vxl, palette: pal })
       } catch (e: any) {
         if (!disposed) setError(e?.message || 'Failed to render VXL')
       } finally {
@@ -138,7 +154,19 @@ const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[] }> = (
     }
     load()
     return () => { disposed = true }
-  }, [selectedFile, mixFiles, frameIndex, frames])
+  }, [selectedFile, mixFiles])
+
+  // 当帧或VXL数据改变时重新渲染
+  useEffect(() => {
+    if (!vxlData) return
+
+    const mount = mountRef.current
+    if (!mount) return
+
+    const { vxl, palette } = vxlData
+    console.log(`[VxlViewer] Rendering frame ${frameIndex}/${frames - 1}`)
+    render2DFrame(mount, vxl, palette, frameIndex % Math.max(1, frames), frames)
+  }, [frameIndex, frames, vxlData])
 
   return (
     <div className="w-full h-full flex flex-col">

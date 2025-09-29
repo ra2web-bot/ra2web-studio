@@ -34,7 +34,20 @@ const FileTree: React.FC<FileTreeProps> = ({ mixFiles, selectedFile, onFileSelec
 
   // 获取文件类型名称
   const getFileTypeName = (extension: string): string => {
-    return extension.toLowerCase() || '未知'
+    const typeMap: { [key: string]: string } = {
+      'xif': 'xif',
+      'mix': 'mix',
+      'shp': 'shp',
+      'vxl': 'vxl',
+      'pal': 'pal',
+      'wav': 'wav',
+      'ini': 'ini',
+      'txt': 'txt',
+      'pcx': 'pcx',
+      'csf': 'csf',
+      'dat': 'dat'
+    }
+    return typeMap[extension.toLowerCase()] || extension.toUpperCase() + '文件'
   }
 
   // 构建文件列表

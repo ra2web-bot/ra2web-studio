@@ -38,7 +38,8 @@ const HvaViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[] }> = (
         if (!hva.sections.length) throw new Error('No sections in HVA')
         const frames = hva.sections[0].matrices.length
         setMaxFrame(Math.max(0, frames - 1))
-        setFrame(f => Math.min(f, Math.max(0, frames - 1)))
+        // 重置帧为0，确保切换文件时帧归零
+        setFrame(0)
 
         // Init three
         const mount = mountRef.current

@@ -182,12 +182,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({ selectedFile, mixFiles, bre
       {/* 预览工具栏 */}
       <div className="p-2 border-t border-gray-700 flex justify-between items-center">
         <div className="flex space-x-2">
-          <button className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded transition-colors">
-            鼠标滚轮可缩放
-          </button>
-          <button className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded transition-colors">
-            鼠标拖动可旋转
-          </button>
+          <span className="text-xs text-gray-400">您正在查看文件：{selectedFile.split('/').pop()}</span>
         </div>
       </div>
     </div>
