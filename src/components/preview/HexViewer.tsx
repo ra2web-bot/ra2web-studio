@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react'
 import { MixParser, MixFileInfo } from '../../services/MixParser'
+import type { ResourceContext } from '../../services/gameRes/ResourceContext'
 
 type MixFileData = { file: File; info: MixFileInfo }
 
-const HexViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[] }> = ({ selectedFile, mixFiles }) => {
+const HexViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resourceContext?: ResourceContext | null }> = ({ selectedFile, mixFiles }) => {
   const [dump, setDump] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)

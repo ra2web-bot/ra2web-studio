@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { MixParser, MixFileInfo } from '../../services/MixParser'
+import { PaletteParser } from '../../services/palette/PaletteParser'
+import type { ResourceContext } from '../../services/gameRes/ResourceContext'
 
 type MixFileData = { file: File; info: MixFileInfo }
 
@@ -54,13 +56,26 @@ function decodePCX(bytes: Uint8Array): ParsedImage {
     let palette: Uint8Array | null = null
     if (bytes.length >= 769) {
       const palStart = bytes.length - 769
-      if (bytes[palStart] === 0x0C) palette = bytes.subarray(palStart + 1, palStart + 1 + 768)
+      if (bytes[palStart] === 0x0C) {
+        const raw = bytes.subarray(palStart + 1, palStart + 1 + 768)
+        const parsed = PaletteParser.fromBytes(raw)
+        if (parsed) {
+          palette = PaletteParser.toBytePalette(parsed.colors)
+        }
+      }
     }
     // Fallback: 16-color header palette (48 bytes, often 6-bit -> scale to 8-bit)
     if (!palette) {
       const pal16 = bytes.subarray(16, 64)
-      const scaled = new Uint8Array(48)
-      for (let i = 0; i < 48; i++) scaled[i] = pal16[i] * 4
+      const parsed = PaletteParser.fromBytes(pal16)
+      if (!parsed) throw new Error('Invalid PCX header palette')
+      const scaled = new Uint8Array(parsed.colors.length * 3)
+      for (let i = 0; i < parsed.colors.length; i++) {
+        const c = parsed.colors[i]
+        scaled[i * 3] = c.r
+        scaled[i * 3 + 1] = c.g
+        scaled[i * 3 + 2] = c.b
+      }
       palette = scaled
     }
     console.log('[PcxViewer] palette', { type: palette.length === 768 ? 'VGA256' : 'Header16', length: palette.length })
@@ -113,7 +128,7 @@ function decodePCX(bytes: Uint8Array): ParsedImage {
   throw new Error(`Unsupported PCX format (bpp=${bitsPerPixel}, planes=${nPlanes})`)
 }
 
-const PcxViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[] }> = ({ selectedFile, mixFiles }) => {
+const PcxViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resourceContext?: ResourceContext | null }> = ({ selectedFile, mixFiles }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

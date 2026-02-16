@@ -11,6 +11,7 @@ import ShpViewer from './preview/ShpViewer'
 import VxlViewer from './preview/VxlViewer'
 import VxlViewer3D from './preview/VxlViewer3D.tsx'
 import HvaViewer from './preview/HvaViewer'
+import type { ResourceContext } from '../services/gameRes/ResourceContext'
 
 type MixFileData = { file: File; info: MixFileInfo }
 
@@ -19,9 +20,10 @@ interface PreviewPanelProps {
   mixFiles: MixFileData[]
   breadcrumbs?: string[]
   onBreadcrumbClick?: (index: number) => void
+  resourceContext?: ResourceContext | null
 }
 
-const PreviewPanel: React.FC<PreviewPanelProps> = ({ selectedFile, mixFiles, breadcrumbs, onBreadcrumbClick }) => {
+const PreviewPanel: React.FC<PreviewPanelProps> = ({ selectedFile, mixFiles, breadcrumbs, onBreadcrumbClick, resourceContext }) => {
   const getFileTypeIcon = (filePath: string) => {
     const extension = filePath.split('.').pop()?.toLowerCase()
 
@@ -66,7 +68,11 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({ selectedFile, mixFiles, bre
 
   const ext = useMemo(() => selectedFile?.split('.').pop()?.toLowerCase() ?? '', [selectedFile])
 
-  type ViewerDef = { key: string; label: string; Component: React.FC<{ selectedFile: string; mixFiles: MixFileData[] }> }
+  type ViewerDef = {
+    key: string
+    label: string
+    Component: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resourceContext?: ResourceContext | null }>
+  }
   const viewsByExt: Record<string, ViewerDef[]> = {
     ini: [
       { key: 'text', label: '文本', Component: IniViewer },
@@ -174,7 +180,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({ selectedFile, mixFiles, bre
         <div className="bg-gray-800 h-full w-full overflow-hidden">
           {(() => {
             const Viewer = available.find(v => v.key === activeView)?.Component ?? available[0].Component
-            return selectedFile ? <Viewer selectedFile={selectedFile} mixFiles={mixFiles} /> : null
+            return selectedFile ? <Viewer selectedFile={selectedFile} mixFiles={mixFiles} resourceContext={resourceContext} /> : null
           })()}
         </div>
       </div>

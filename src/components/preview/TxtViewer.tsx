@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react'
 import { MixParser, MixFileInfo } from '../../services/MixParser'
+import type { ResourceContext } from '../../services/gameRes/ResourceContext'
 
 type MixFileData = { file: File; info: MixFileInfo }
 
-const TxtViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[] }> = ({ selectedFile, mixFiles }) => {
+const TxtViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resourceContext?: ResourceContext | null }> = ({ selectedFile, mixFiles }) => {
   const [content, setContent] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

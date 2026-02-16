@@ -3,13 +3,16 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { MixParser, MixFileInfo } from '../../services/MixParser'
 import { VxlFile } from '../../data/VxlFile'
+import { PaletteParser } from '../../services/palette/PaletteParser'
+import { PaletteResolver } from '../../services/palette/PaletteResolver'
+import { loadPaletteByPath } from '../../services/palette/PaletteLoader'
+import type { PaletteSelectionInfo, Rgb } from '../../services/palette/PaletteTypes'
+import type { ResourceContext } from '../../services/gameRes/ResourceContext'
 
 type MixFileData = { file: File; info: MixFileInfo }
 
-function buildDefaultPalette(): Uint8Array {
-  const pal = new Uint8Array(256 * 3)
-  for (let i = 0; i < 256; i++) pal.set([i, i, i], i * 3)
-  return pal
+function toBytePalette(palette: Rgb[]): Uint8Array {
+  return PaletteParser.toBytePalette(PaletteParser.ensurePalette256(palette))
 }
 
 function colorFromPalette(palette: Uint8Array, index: number): THREE.Color {
@@ -20,10 +23,21 @@ function colorFromPalette(palette: Uint8Array, index: number): THREE.Color {
   return new THREE.Color(r, g, b)
 }
 
-const VxlViewer3D: React.FC<{ selectedFile: string; mixFiles: MixFileData[] }> = ({ selectedFile, mixFiles }) => {
+const VxlViewer3D: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resourceContext?: ResourceContext | null }> = ({
+  selectedFile,
+  mixFiles,
+  resourceContext,
+}) => {
   const mountRef = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [palettePath, setPalettePath] = useState<string>('')
+  const [paletteList, setPaletteList] = useState<string[]>([])
+  const [paletteInfo, setPaletteInfo] = useState<PaletteSelectionInfo>({
+    source: 'fallback-grayscale',
+    reason: '未加载',
+    resolvedPath: null,
+  })
 
   useEffect(() => {
     let renderer: THREE.WebGLRenderer | null = null
@@ -47,7 +61,45 @@ const VxlViewer3D: React.FC<{ selectedFile: string; mixFiles: MixFileData[] }> =
 
         const vxl = new VxlFile(vf)
         if (vxl.sections.length === 0) throw new Error('Failed to parse VXL')
-        const pal = buildDefaultPalette()
+        const hasEmbeddedPalette = vxl.embeddedPalette.length >= 48
+        const decision = PaletteResolver.resolve({
+          assetPath: selectedFile,
+          assetKind: 'vxl',
+          mixFiles,
+          resourceContext,
+          manualPalettePath: palettePath || null,
+          hasEmbeddedPalette,
+        })
+        setPaletteList(decision.availablePalettePaths)
+
+        let selectedInfo: PaletteSelectionInfo = decision.selection
+        let finalPalette: Rgb[] | null = null
+        if (decision.resolvedPalettePath) {
+          const loaded = await loadPaletteByPath(decision.resolvedPalettePath, mixFiles)
+          if (loaded) {
+            finalPalette = loaded
+          } else {
+            selectedInfo = {
+              source: 'fallback-grayscale',
+              reason: `调色板加载失败（${decision.resolvedPalettePath}），回退灰度`,
+              resolvedPath: decision.resolvedPalettePath,
+            }
+          }
+        } else if (hasEmbeddedPalette) {
+          const embedded = PaletteParser.fromBytes(vxl.embeddedPalette)
+          if (embedded) {
+            finalPalette = embedded.colors
+          } else {
+            selectedInfo = {
+              source: 'fallback-grayscale',
+              reason: '内嵌调色板无效，回退灰度',
+              resolvedPath: null,
+            }
+          }
+        }
+        if (!finalPalette) finalPalette = PaletteParser.buildGrayscalePalette()
+        setPaletteInfo(selectedInfo)
+        const pal = toBytePalette(finalPalette)
 
         // 构建体素网格（低开销：实例化网格）
         const mount = mountRef.current
@@ -174,11 +226,29 @@ const VxlViewer3D: React.FC<{ selectedFile: string; mixFiles: MixFileData[] }> =
       renderer = null
       controls = null
     }
-  }, [selectedFile, mixFiles])
+  }, [selectedFile, mixFiles, palettePath, resourceContext])
 
   return (
     <div className="w-full h-full flex flex-col">
-      <div className="px-3 py-2 text-xs text-gray-400 border-b border-gray-700">VXL 预览（3D体素）</div>
+      <div className="px-3 py-2 text-xs text-gray-400 border-b border-gray-700 flex items-center gap-2">
+        <span>VXL 预览（3D体素）</span>
+        <label className="flex items-center gap-1">
+          <span>调色板</span>
+          <select
+            className="bg-gray-800 border border-gray-700 rounded px-1 py-0.5 text-xs"
+            value={palettePath}
+            onChange={(e) => setPalettePath(e.target.value || '')}
+          >
+            <option value="">自动(规则/内嵌)</option>
+            {paletteList.map((p) => (
+              <option key={p} value={p}>
+                {p.split('/').pop() || p}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span className="text-gray-500 truncate">{paletteInfo.source} - {paletteInfo.reason}</span>
+      </div>
       <div ref={mountRef} className="flex-1" />
       {loading && <div className="absolute inset-0 flex items-center justify-center text-gray-400 bg-black/20">加载中...</div>}
       {error && !loading && <div className="absolute top-2 left-2 right-2 p-2 text-red-400 text-xs bg-black/40 rounded">{error}</div>}

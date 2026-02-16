@@ -2,14 +2,16 @@ import React, { useEffect, useRef, useState } from 'react'
 // 2D frame sampling view (no WebGL)
 import { MixParser, MixFileInfo } from '../../services/MixParser'
 import { VxlFile } from '../../data/VxlFile'
+import { PaletteParser } from '../../services/palette/PaletteParser'
+import { PaletteResolver } from '../../services/palette/PaletteResolver'
+import { loadPaletteByPath } from '../../services/palette/PaletteLoader'
+import type { PaletteSelectionInfo, Rgb } from '../../services/palette/PaletteTypes'
+import type { ResourceContext } from '../../services/gameRes/ResourceContext'
 
 type MixFileData = { file: File; info: MixFileInfo }
 
-function buildDefaultPalette(): Uint8Array {
-  // grayscale palette as fallback (256 * 3)
-  const pal = new Uint8Array(256 * 3)
-  for (let i = 0; i < 256; i++) pal.set([i, i, i], i * 3)
-  return pal
+function toBytePalette(palette: Rgb[]): Uint8Array {
+  return PaletteParser.toBytePalette(PaletteParser.ensurePalette256(palette))
 }
 
 function colorFromPalette(palette: Uint8Array, index: number): [number, number, number] {
@@ -17,13 +19,24 @@ function colorFromPalette(palette: Uint8Array, index: number): [number, number, 
   return [palette[i], palette[i + 1], palette[i + 2]]
 }
 
-const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[] }> = ({ selectedFile, mixFiles }) => {
+const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resourceContext?: ResourceContext | null }> = ({
+  selectedFile,
+  mixFiles,
+  resourceContext,
+}) => {
   const mountRef = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const [frames, setFrames] = useState<number>(16)
   const [frameIndex, setFrameIndex] = useState<number>(0)
+  const [palettePath, setPalettePath] = useState<string>('')
+  const [paletteList, setPaletteList] = useState<string[]>([])
+  const [paletteInfo, setPaletteInfo] = useState<PaletteSelectionInfo>({
+    source: 'fallback-grayscale',
+    reason: '未加载',
+    resolvedPath: null,
+  })
 
   function render2DFrame(mount: HTMLDivElement, vxl: VxlFile, palette: Uint8Array, frameIdx: number, frameCount: number) {
     // 清除之前的内容
@@ -140,7 +153,49 @@ const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[] }> = (
         if (!vf) throw new Error('File not found in MIX')
         const vxl = new VxlFile(vf)
         if (vxl.sections.length === 0) throw new Error('Failed to parse VXL')
-        const pal = buildDefaultPalette()
+        const hasEmbeddedPalette = vxl.embeddedPalette.length >= 48
+        const decision = PaletteResolver.resolve({
+          assetPath: selectedFile,
+          assetKind: 'vxl',
+          mixFiles,
+          resourceContext,
+          manualPalettePath: palettePath || null,
+          hasEmbeddedPalette,
+        })
+        setPaletteList(decision.availablePalettePaths)
+
+        let selectedInfo: PaletteSelectionInfo = decision.selection
+        let finalPalette: Rgb[] | null = null
+
+        if (decision.resolvedPalettePath) {
+          const loaded = await loadPaletteByPath(decision.resolvedPalettePath, mixFiles)
+          if (loaded) {
+            finalPalette = loaded
+          } else {
+            selectedInfo = {
+              source: 'fallback-grayscale',
+              reason: `调色板加载失败（${decision.resolvedPalettePath}），回退灰度`,
+              resolvedPath: decision.resolvedPalettePath,
+            }
+          }
+        } else if (hasEmbeddedPalette) {
+          const embedded = PaletteParser.fromBytes(vxl.embeddedPalette)
+          if (embedded) {
+            finalPalette = embedded.colors
+          } else {
+            selectedInfo = {
+              source: 'fallback-grayscale',
+              reason: '内嵌调色板无效，回退灰度',
+              resolvedPath: null,
+            }
+          }
+        }
+
+        if (!finalPalette) {
+          finalPalette = PaletteParser.buildGrayscalePalette()
+        }
+        setPaletteInfo(selectedInfo)
+        const pal = toBytePalette(finalPalette)
 
         if (disposed) return
 
@@ -154,7 +209,7 @@ const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[] }> = (
     }
     load()
     return () => { disposed = true }
-  }, [selectedFile, mixFiles])
+  }, [selectedFile, mixFiles, palettePath, resourceContext])
 
   // 当帧或VXL数据改变时重新渲染
   useEffect(() => {
@@ -187,6 +242,24 @@ const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[] }> = (
           <input className="flex-1" type="range" min={0} max={Math.max(1, frames) - 1} value={frameIndex % Math.max(1, frames)} onChange={e => setFrameIndex(parseInt(e.target.value || '0') || 0)} />
           <span className="w-6 text-right">{(frameIndex % Math.max(1, frames))}</span>
         </label>
+        <label className="flex items-center gap-1">
+          <span>调色板</span>
+          <select
+            className="bg-gray-800 border border-gray-700 rounded px-1 py-0.5 text-xs"
+            value={palettePath}
+            onChange={(e) => setPalettePath(e.target.value || '')}
+          >
+            <option value="">自动(规则/内嵌)</option>
+            {paletteList.map((p) => (
+              <option key={p} value={p}>
+                {p.split('/').pop() || p}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span className="text-gray-500 truncate max-w-[280px]">
+          {paletteInfo.source} - {paletteInfo.reason}
+        </span>
       </div>
       <div ref={mountRef} className="flex-1 flex items-center justify-center bg-gray-900" />
       {loading && <div className="absolute inset-0 flex items-center justify-center text-gray-400 bg-black/20">加载中...</div>}

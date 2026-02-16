@@ -7,6 +7,7 @@ export class VxlFile {
   public filename?: string
   public sections: Section[] = []
   public voxelCount: number = 0
+  public embeddedPalette: Uint8Array = new Uint8Array(0)
 
   constructor(vf?: VirtualFile) {
     if (vf instanceof VirtualFile) this.fromVirtualFile(vf)
@@ -17,9 +18,11 @@ export class VxlFile {
     const s: DataStream = vf.stream
     this.sections = []
     this.voxelCount = 0
+    this.embeddedPalette = new Uint8Array(0)
     if (s.byteLength < VxlHeader.size) return
     const header = new VxlHeader()
     header.read(s)
+    this.embeddedPalette = header.embeddedPalette
     if (!header.headerCount || !header.tailerCount || header.tailerCount !== header.headerCount) return
 
     for (let i = 0; i < header.headerCount; i++) {
