@@ -27,6 +27,7 @@ export class ResourceContext {
   public readonly importedFiles: ImportedResourceFile[]
   public readonly archives: ResourceMixFile[]
   public readonly standaloneFiles: ResourceStandaloneFile[]
+  public readonly discoveredPalettePaths: string[]
   public readonly vfs: VirtualFileSystem
   public readonly readiness: ResourceReadiness
 
@@ -35,11 +36,13 @@ export class ResourceContext {
     importedFiles: ImportedResourceFile[]
     archives: ResourceMixFile[]
     standaloneFiles: ResourceStandaloneFile[]
+    discoveredPalettePaths: string[]
   }) {
     this.activeModName = args.activeModName
     this.importedFiles = args.importedFiles
     this.archives = [...args.archives].sort((a, b) => b.priority - a.priority)
     this.standaloneFiles = [...args.standaloneFiles].sort((a, b) => b.priority - a.priority)
+    this.discoveredPalettePaths = [...args.discoveredPalettePaths]
     this.readiness = GameResConfig.checkReadiness(this.importedFiles)
 
     const vfsArchives: VfsArchive[] = this.archives.map((item) => ({
@@ -56,6 +59,39 @@ export class ResourceContext {
         priority: item.priority,
       })),
     )
+  }
+
+  private static async discoverPalettePaths(archives: ResourceMixFile[]): Promise<string[]> {
+    const result = new Set<string>()
+    const mixLikeExts = new Set(['mix', 'mmx', 'yro'])
+    const sortedArchives = [...archives].sort((a, b) => b.priority - a.priority)
+
+    for (const archive of sortedArchives) {
+      const rootPath = archive.info.name
+
+      for (const entry of archive.info.files) {
+        if (entry.extension.toLowerCase() !== 'pal') continue
+        result.add(`${rootPath}/${entry.filename}`)
+      }
+
+      for (const entry of archive.info.files) {
+        if (!mixLikeExts.has(entry.extension.toLowerCase())) continue
+        const nestedContainerPath = `${rootPath}/${entry.filename}`
+        try {
+          const nestedVf = await MixParser.extractFile(archive.file, entry.filename)
+          if (!nestedVf) continue
+          const nestedInfo = await MixParser.parseVirtualFile(nestedVf, entry.filename)
+          for (const nestedEntry of nestedInfo.files) {
+            if (nestedEntry.extension.toLowerCase() !== 'pal') continue
+            result.add(`${nestedContainerPath}/${nestedEntry.filename}`)
+          }
+        } catch {
+          // Ignore unreadable nested MIX while keeping other palettes available.
+        }
+      }
+    }
+
+    return [...result]
   }
 
   static async load(activeModName: string | null): Promise<ResourceContext> {
@@ -88,11 +124,13 @@ export class ResourceContext {
         })
       }
     }
+    const discoveredPalettePaths = await this.discoverPalettePaths(archives)
     return new ResourceContext({
       activeModName,
       importedFiles,
       archives,
       standaloneFiles,
+      discoveredPalettePaths,
     })
   }
 
@@ -104,7 +142,17 @@ export class ResourceContext {
     return this.vfs.openFile(filename)
   }
 
+  listAllPalettePaths(): string[] {
+    return [...this.discoveredPalettePaths]
+  }
+
   resolvePalettePathByName(filename: string): string | null {
+    const lower = filename.toLowerCase()
+    const nested = this.discoveredPalettePaths.find((path) => {
+      const base = path.split('/').pop() ?? path
+      return base.toLowerCase() === lower
+    })
+    if (nested) return nested
     const owner = this.vfs.resolveOwner(filename)
     if (!owner) return null
     return `${owner.name}/${filename}`

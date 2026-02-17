@@ -74,20 +74,16 @@ function getCandidateNames(assetKind: PaletteAssetKind, innerFilename: string): 
   return [...new Set(result.map((s) => s.toLowerCase()))]
 }
 
-function buildPaletteNameIndex(mixFiles: MixFileData[]): Map<string, string[]> {
+function buildPaletteNameIndexFromPaths(paths: string[]): Map<string, string[]> {
   const index = new Map<string, string[]>()
-  for (const mix of mixFiles) {
-    for (const file of mix.info.files) {
-      if (file.extension.toLowerCase() !== 'pal') continue
-      const path = `${mix.info.name}/${file.filename}`
-      const base = file.filename.split('/').pop() ?? file.filename
-      const key = base.toLowerCase()
-      const arr = index.get(key)
-      if (arr) {
-        arr.push(path)
-      } else {
-        index.set(key, [path])
-      }
+  for (const path of paths) {
+    const base = path.split('/').pop() ?? path
+    const key = base.toLowerCase()
+    const arr = index.get(key)
+    if (arr) {
+      arr.push(path)
+    } else {
+      index.set(key, [path])
     }
   }
   return index
@@ -107,7 +103,7 @@ export class PaletteResolver {
   }
 
   static resolve(request: ResolvePaletteRequest): ResolvePaletteDecision {
-    const availablePalettePaths = this.listPalettePaths(request.mixFiles)
+    const availablePalettePaths = request.resourceContext?.listAllPalettePaths() ?? this.listPalettePaths(request.mixFiles)
     const innerFilename = getInnerFilename(request.assetPath)
     const candidates = getCandidateNames(request.assetKind, innerFilename)
 
@@ -137,7 +133,7 @@ export class PaletteResolver {
       }
     }
 
-    const nameIndex = buildPaletteNameIndex(request.mixFiles)
+    const nameIndex = buildPaletteNameIndexFromPaths(availablePalettePaths)
     for (const candidate of candidates) {
       const overlayPath = request.resourceContext?.resolvePalettePathByName(candidate) ?? null
       if (overlayPath) {
