@@ -88,6 +88,7 @@ const RAW_XCC_PALETTE_RULES: XccPaletteRule[] = [
   { assetKind: 'shp', palette: 'unittem.pal', filenamePattern: '*.tem' },
   { assetKind: 'shp', palette: 'uniturb.pal', filenamePattern: '*.urb' },
   { assetKind: 'shp', palette: 'spldbr.pal', filenamePattern: 'spldbr*' },
+  { assetKind: 'shp', palette: 'dialog.pal', filenamePattern: 'pudlgbgn*' },
   { assetKind: 'shp', palette: 'gls.pal', filenamePattern: 'gls?.*' },
   { assetKind: 'shp', palette: 'grfxtxt.pal', filenamePattern: 'grfxtxt*' },
   { assetKind: 'shp', palette: 'ldscrna.pal', filenamePattern: 'ls??0a??*', width: 640, height: 400 },

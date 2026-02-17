@@ -1,10 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 // 2D frame sampling view (no WebGL)
 import { MixParser, MixFileInfo } from '../../services/MixParser'
 import { VxlFile } from '../../data/VxlFile'
 import { PaletteParser } from '../../services/palette/PaletteParser'
 import { PaletteResolver } from '../../services/palette/PaletteResolver'
 import { loadPaletteByPath } from '../../services/palette/PaletteLoader'
+import SearchableSelect from '../common/SearchableSelect'
 import type { PaletteSelectionInfo, Rgb } from '../../services/palette/PaletteTypes'
 import type { ResourceContext } from '../../services/gameRes/ResourceContext'
 
@@ -223,6 +224,11 @@ const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
     render2DFrame(mount, vxl, palette, frameIndex % Math.max(1, frames), frames)
   }, [frameIndex, frames, vxlData])
 
+  const paletteOptions = useMemo(
+    () => [{ value: '', label: '自动(规则/内嵌)' }, ...paletteList.map((p) => ({ value: p, label: p.split('/').pop() || p }))],
+    [paletteList],
+  )
+
   return (
     <div className="w-full h-full flex flex-col">
       <div className="px-3 py-2 text-xs text-gray-400 border-b border-gray-700 flex items-center gap-3">
@@ -244,18 +250,17 @@ const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
         </label>
         <label className="flex items-center gap-1">
           <span>调色板</span>
-          <select
-            className="bg-gray-800 border border-gray-700 rounded px-1 py-0.5 text-xs"
+          <SearchableSelect
             value={palettePath}
-            onChange={(e) => setPalettePath(e.target.value || '')}
-          >
-            <option value="">自动(规则/内嵌)</option>
-            {paletteList.map((p) => (
-              <option key={p} value={p}>
-                {p.split('/').pop() || p}
-              </option>
-            ))}
-          </select>
+            options={paletteOptions}
+            onChange={(next) => setPalettePath(next || '')}
+            closeOnSelect={false}
+            pinnedValues={['']}
+            searchPlaceholder="搜索调色板..."
+            noResultsText="未找到匹配调色板"
+            triggerClassName="min-w-[160px] max-w-[240px] bg-gray-800 border border-gray-700 rounded px-1 py-0.5 text-xs text-left flex items-center gap-2"
+            menuClassName="absolute z-50 mt-1 w-[260px] max-w-[70vw] rounded border border-gray-700 bg-gray-800 shadow-xl"
+          />
         </label>
         <span className="text-gray-500 truncate max-w-[280px]">
           {paletteInfo.source} - {paletteInfo.reason}

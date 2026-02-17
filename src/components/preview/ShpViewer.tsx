@@ -5,6 +5,7 @@ import { PaletteParser } from '../../services/palette/PaletteParser'
 import { PaletteResolver } from '../../services/palette/PaletteResolver'
 import { loadPaletteByPath } from '../../services/palette/PaletteLoader'
 import { IndexedColorRenderer } from '../../services/palette/IndexedColorRenderer'
+import SearchableSelect from '../common/SearchableSelect'
 import type { PaletteSelectionInfo, Rgb } from '../../services/palette/PaletteTypes'
 import type { ResourceContext } from '../../services/gameRes/ResourceContext'
 
@@ -187,15 +188,15 @@ const ShpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
         </div>
         <div className="flex items-center gap-2">
           <span>调色板:</span>
-          <select
-            className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs"
+          <SearchableSelect
             value={palettePath}
-            onChange={e => setPalettePath(e.target.value || '')}
-          >
-            {paletteOptions.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
+            options={paletteOptions}
+            onChange={(next) => setPalettePath(next || '')}
+            closeOnSelect={false}
+            pinnedValues={['']}
+            searchPlaceholder="搜索调色板..."
+            noResultsText="未找到匹配调色板"
+          />
         </div>
         <div className="text-gray-500 truncate max-w-[420px]">
           来源: {paletteInfo.source} - {paletteInfo.reason}
