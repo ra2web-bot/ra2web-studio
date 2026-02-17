@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react'
-import { Image, Box, FileText, Music } from 'lucide-react'
+import { Image, Box, FileText, Music, Info } from 'lucide-react'
 import { MixFileInfo } from '../services/MixParser'
 import IniViewer from './preview/IniViewer'
 import DatViewer from './preview/DatViewer'
@@ -21,9 +21,19 @@ interface PreviewPanelProps {
   breadcrumbs?: string[]
   onBreadcrumbClick?: (index: number) => void
   resourceContext?: ResourceContext | null
+  onOpenMetadataDrawer?: () => void
+  metadataDrawerOpen?: boolean
 }
 
-const PreviewPanel: React.FC<PreviewPanelProps> = ({ selectedFile, mixFiles, breadcrumbs, onBreadcrumbClick, resourceContext }) => {
+const PreviewPanel: React.FC<PreviewPanelProps> = ({
+  selectedFile,
+  mixFiles,
+  breadcrumbs,
+  onBreadcrumbClick,
+  resourceContext,
+  onOpenMetadataDrawer,
+  metadataDrawerOpen = false,
+}) => {
   const getFileTypeIcon = (filePath: string) => {
     const extension = filePath.split('.').pop()?.toLowerCase()
 
@@ -152,8 +162,24 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({ selectedFile, mixFiles, bre
         )}
         <div className="flex items-center space-x-3">
           {getFileTypeIcon(selectedFile)}
-          <div>
-            <h3 className="text-lg font-semibold">{selectedFile.split('/').pop()}</h3>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-semibold truncate">{selectedFile.split('/').pop()}</h3>
+              <button
+                type="button"
+                onClick={() => onOpenMetadataDrawer?.()}
+                className={`inline-flex items-center justify-center p-1 rounded transition-colors ${
+                  metadataDrawerOpen
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                }`}
+                title="点击可以查看元数据详情"
+                aria-label="点击可以查看元数据详情"
+                aria-pressed={metadataDrawerOpen}
+              >
+                <Info size={16} />
+              </button>
+            </div>
             <p className="text-sm text-gray-400">{getFileTypeName(selectedFile)}</p>
           </div>
         </div>

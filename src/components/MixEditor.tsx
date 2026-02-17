@@ -73,6 +73,7 @@ const MixEditor: React.FC = () => {
   const [resourceReady, setResourceReady] = useState(false)
   const [missingRequiredFiles, setMissingRequiredFiles] = useState<string[]>([])
   const [resourceContext, setResourceContext] = useState<ResourceContext | null>(null)
+  const [metadataDrawerOpen, setMetadataDrawerOpen] = useState(false)
   // 导航栈：从顶层 MIX 到当前容器（可能是子 MIX）
   const [navStack, setNavStack] = useState<Array<{ name: string; info: MixFileInfo; fileObj: File | VirtualFile }>>([])
 
@@ -81,6 +82,7 @@ const MixEditor: React.FC = () => {
       setActiveTopMixName(null)
       setNavStack([])
       setSelectedFile(null)
+      setMetadataDrawerOpen(false)
       return
     }
     const firstMix = nextMixFiles[0]
@@ -122,6 +124,7 @@ const MixEditor: React.FC = () => {
         setActiveTopMixName(null)
         setNavStack([])
         setSelectedFile(null)
+        setMetadataDrawerOpen(false)
       }
       setProgressMessage('')
     } catch (error) {
@@ -133,6 +136,7 @@ const MixEditor: React.FC = () => {
       setActiveTopMixName(null)
       setNavStack([])
       setSelectedFile(null)
+      setMetadataDrawerOpen(false)
     } finally {
       setLoading(false)
     }
@@ -268,6 +272,14 @@ const MixEditor: React.FC = () => {
       setWorkspaceMix(mixName, false)
     }
   }, [browserMode, activeTopMixName, setWorkspaceMix])
+
+  const handleOpenMetadataDrawer = useCallback(() => {
+    setMetadataDrawerOpen(true)
+  }, [])
+
+  const handleCloseMetadataDrawer = useCallback(() => {
+    setMetadataDrawerOpen(false)
+  }, [])
 
   const handleBrowserModeChange = useCallback((mode: BrowserMode) => {
     setBrowserMode(mode)
@@ -472,22 +484,48 @@ const MixEditor: React.FC = () => {
           </div>
 
           {/* 中间预览区域 */}
-          <div className="flex-1 min-w-0 min-h-0 bg-gray-900 overflow-hidden">
+          <div className="flex-1 min-w-0 min-h-0 bg-gray-900 overflow-hidden relative">
+            {metadataDrawerOpen && (
+              <button
+                type="button"
+                className="absolute inset-0 bg-black/25 z-10"
+                aria-label="关闭元数据详情抽屉"
+                onClick={handleCloseMetadataDrawer}
+              />
+            )}
             <PreviewPanel
               selectedFile={selectedFile}
               mixFiles={mixFiles}
               breadcrumbs={navStack.map(n => n.name)}
               onBreadcrumbClick={handleBreadcrumbClick}
               resourceContext={resourceContext}
+              onOpenMetadataDrawer={handleOpenMetadataDrawer}
+              metadataDrawerOpen={metadataDrawerOpen}
             />
-          </div>
-
-          {/* 右侧属性面板 */}
-          <div className="w-80 bg-gray-800 border-l border-gray-700">
-            <PropertiesPanel
-              selectedFile={selectedFile}
-              mixFiles={mixFiles}
-            />
+            <div
+              className={`absolute inset-y-0 right-0 w-80 bg-gray-800 border-l border-gray-700 shadow-2xl z-20 transform transition-transform duration-200 ${
+                metadataDrawerOpen ? 'translate-x-0' : 'translate-x-full'
+              }`}
+            >
+              <div className="h-full flex flex-col">
+                <div className="px-3 py-2 border-b border-gray-700 flex items-center justify-between">
+                  <span className="text-sm text-gray-300">元数据详情</span>
+                  <button
+                    type="button"
+                    className="px-2 py-1 text-xs rounded bg-gray-700 hover:bg-gray-600 text-gray-200"
+                    onClick={handleCloseMetadataDrawer}
+                  >
+                    关闭
+                  </button>
+                </div>
+                <div className="flex-1 min-h-0">
+                  <PropertiesPanel
+                    selectedFile={selectedFile}
+                    mixFiles={mixFiles}
+                  />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

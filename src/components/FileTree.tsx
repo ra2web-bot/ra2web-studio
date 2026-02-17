@@ -176,7 +176,7 @@ const FileTree: React.FC<FileTreeProps> = ({
             全局视角
           </button>
         </div>
-        {browserMode === 'workspace' && !isNestedWorkspace && mixFiles.length > 1 && (
+        {browserMode === 'workspace' && mixFiles.length > 1 && (
           <div className="mt-2">
             <label className="text-xs text-gray-400 block mb-1">当前激活 MIX</label>
             <select
