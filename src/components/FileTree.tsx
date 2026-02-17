@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useMemo, useState } from 'react'
 import { File, Folder } from 'lucide-react'
 import { MixFileData } from './MixEditor'
 
@@ -45,6 +45,8 @@ const FileTree: React.FC<FileTreeProps> = ({
   navPrefix,
   onDrillDown,
 }) => {
+  const [searchQuery, setSearchQuery] = useState('')
+
   // 格式化文件大小显示
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 B'
@@ -111,8 +113,26 @@ const FileTree: React.FC<FileTreeProps> = ({
     }))
   }
 
-  const workspaceFileList = buildWorkspaceFileList()
-  const repositoryGroups = buildRepositoryGroups()
+  const workspaceFileList = useMemo(
+    () => buildWorkspaceFileList(),
+    [rootless, container, navPrefix, workspaceMixFiles, mixFiles],
+  )
+  const repositoryGroups = useMemo(
+    () => buildRepositoryGroups(),
+    [mixFiles, mixSourceLabelByName],
+  )
+  const normalizedSearchQuery = useMemo(
+    () => searchQuery.trim().toLowerCase(),
+    [searchQuery],
+  )
+  const filteredWorkspaceFileList = useMemo(() => {
+    if (!normalizedSearchQuery) return workspaceFileList
+    return workspaceFileList.filter((file) => (
+      file.filename.toLowerCase().includes(normalizedSearchQuery)
+      || file.extension.toLowerCase().includes(normalizedSearchQuery)
+      || file.path.toLowerCase().includes(normalizedSearchQuery)
+    ))
+  }, [workspaceFileList, normalizedSearchQuery])
   const isNestedWorkspace = Boolean(rootless && navPrefix && navPrefix.includes('/'))
 
   const renderFileRow = (file: FileItem, key: string) => {
@@ -177,6 +197,17 @@ const FileTree: React.FC<FileTreeProps> = ({
             全局视角
           </button>
         </div>
+        {browserMode === 'workspace' && (
+          <div className="mt-2">
+            <input
+              type="text"
+              className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-100"
+              placeholder="搜索素材名/后缀..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+        )}
         {browserMode === 'workspace' && mixFiles.length > 1 && (
           <div className="mt-2">
             <label className="text-xs text-gray-400 block mb-1">当前激活 MIX</label>
@@ -216,7 +247,11 @@ const FileTree: React.FC<FileTreeProps> = ({
       <div className="text-sm flex-1 overflow-y-auto">
         {browserMode === 'workspace' ? (
           workspaceFileList.length > 0 ? (
-            workspaceFileList.map((file, index) => renderFileRow(file, `${file.path}-${index}`))
+            filteredWorkspaceFileList.length > 0 ? (
+              filteredWorkspaceFileList.map((file, index) => renderFileRow(file, `${file.path}-${index}`))
+            ) : (
+              <div className="px-3 py-3 text-xs text-gray-400">未找到匹配素材。</div>
+            )
           ) : (
             <div className="px-3 py-3 text-xs text-gray-400">当前工作区暂无可显示文件。</div>
           )

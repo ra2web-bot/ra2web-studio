@@ -247,13 +247,18 @@ const TmpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
         const vf = await MixParser.extractFile(mix.file, inner)
         if (!vf) throw new Error('File not found in MIX')
 
-        const resolvePalette = async (assetKind: 'tmp' | 'shp') => {
+        const resolvePalette = async (
+          assetKind: 'tmp' | 'shp',
+          assetSize?: { width?: number; height?: number },
+        ) => {
           const decision = PaletteResolver.resolve({
             assetPath: selectedFile,
             assetKind,
             mixFiles,
             resourceContext,
             manualPalettePath: palettePath || null,
+            assetWidth: assetSize?.width ?? null,
+            assetHeight: assetSize?.height ?? null,
           })
           setPaletteList(decision.availablePalettePaths)
 
@@ -283,7 +288,10 @@ const TmpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
         try {
           const tmp = TmpFile.fromVirtualFile(vf)
           if (tmp.tileCount <= 0) throw new Error('TMP has no tile data')
-          const paletteResolved = await resolvePalette('tmp')
+          const paletteResolved = await resolvePalette('tmp', {
+            width: tmp.blockWidth,
+            height: tmp.blockHeight,
+          })
 
           if (cancelled) return
           setPaletteInfo(paletteResolved.selection)
@@ -366,7 +374,10 @@ const TmpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
                 return
               }
               const firstFrame = shp.getImage(fallbackFrameIndex)
-              const paletteResolved = await resolvePalette('shp')
+              const paletteResolved = await resolvePalette('shp', {
+                width: firstFrame.width,
+                height: firstFrame.height,
+              })
               if (cancelled) return
               setPaletteInfo({
                 ...paletteResolved.selection,

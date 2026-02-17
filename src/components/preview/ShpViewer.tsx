@@ -65,6 +65,8 @@ const ShpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
           mixFiles,
           resourceContext,
           manualPalettePath: palettePath || null,
+          assetWidth: shp.width,
+          assetHeight: shp.height,
         })
         setPaletteList(decision.availablePalettePaths)
 
