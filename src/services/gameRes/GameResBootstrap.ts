@@ -13,11 +13,12 @@ export class GameResBootstrap {
     return ResourceContext.load(activeModName)
   }
 
-  static async importGameDirectory(
+  static async reimportBaseFromDirectory(
     dirHandle: any,
     onProgress?: (message: string) => void,
     onProgressEvent?: (event: GameResImportProgressEvent) => void,
   ): Promise<GameResImportResult> {
+    await FileSystemUtil.clearBucket('base')
     const options: ImportOptions = { onProgress, onProgressEvent, modName: null }
     const result = await GameResImporter.importDirectory(dirHandle, 'base', options)
     if (result.imported > 0) {
@@ -26,17 +27,32 @@ export class GameResBootstrap {
     return result
   }
 
-  static async importGameArchive(
-    archiveFile: File,
+  static async reimportBaseFromArchives(
+    archiveFiles: File[],
     onProgress?: (message: string) => void,
     onProgressEvent?: (event: GameResImportProgressEvent) => void,
   ): Promise<GameResImportResult> {
-    const options: ImportOptions = { onProgress, onProgressEvent, modName: null }
-    const result = await GameResImporter.importArchive(archiveFile, 'base', options)
-    if (result.imported > 0) {
+    const merged: GameResImportResult = {
+      imported: 0,
+      skipped: 0,
+      errors: [],
+      importedNames: [],
+    }
+    if (!archiveFiles.length) return merged
+
+    await FileSystemUtil.clearBucket('base')
+    for (const archiveFile of archiveFiles) {
+      const options: ImportOptions = { onProgress, onProgressEvent, modName: null }
+      const result = await GameResImporter.importArchive(archiveFile, 'base', options)
+      merged.imported += result.imported
+      merged.skipped += result.skipped
+      merged.errors.push(...result.errors)
+      merged.importedNames.push(...result.importedNames)
+    }
+    if (merged.imported > 0) {
       GameResConfig.markImported(null)
     }
-    return result
+    return merged
   }
 
   static async importPatchFiles(
@@ -47,11 +63,10 @@ export class GameResBootstrap {
     return GameResImporter.importFiles(files, 'patch', { onProgress, onProgressEvent, modName: null })
   }
 
-  static async clearAllResources(): Promise<void> {
-    await FileSystemUtil.clearWorkspace()
-    GameResConfig.save({
-      activeModName: null,
-      lastImportAt: null,
-    })
+  static async clearNonBaseResources(activeModName: string | null): Promise<void> {
+    await FileSystemUtil.clearBucket('patch')
+    if (activeModName) {
+      await FileSystemUtil.clearBucket('mod', activeModName)
+    }
   }
 }

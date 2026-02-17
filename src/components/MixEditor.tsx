@@ -22,6 +22,8 @@ export interface MixFileData {
   info: MixFileInfo
 }
 
+type BrowserMode = 'workspace' | 'repository'
+
 const NON_ERROR_STAGE_ORDER = GAME_RES_IMPORT_STAGE_ORDER.filter((stage) => stage !== 'error')
 
 function applyProgressEventToSteps(
@@ -60,6 +62,8 @@ function applyProgressEventToSteps(
 const MixEditor: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [mixFiles, setMixFiles] = useState<MixFileData[]>([])
+  const [browserMode, setBrowserMode] = useState<BrowserMode>('workspace')
+  const [activeTopMixName, setActiveTopMixName] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [progressMessage, setProgressMessage] = useState<string>('')
   const [importProgressEvent, setImportProgressEvent] = useState<GameResImportProgressEvent | null>(null)
@@ -74,11 +78,13 @@ const MixEditor: React.FC = () => {
 
   const initializeSelection = useCallback((nextMixFiles: MixFileData[]) => {
     if (!nextMixFiles.length) {
+      setActiveTopMixName(null)
       setNavStack([])
       setSelectedFile(null)
       return
     }
     const firstMix = nextMixFiles[0]
+    setActiveTopMixName(firstMix.info.name)
     setNavStack([{ name: firstMix.info.name, info: firstMix.info, fileObj: firstMix.file }])
     if (firstMix.info.files.length > 0) {
       setSelectedFile(`${firstMix.info.name}/${firstMix.info.files[0].filename}`)
@@ -113,6 +119,7 @@ const MixEditor: React.FC = () => {
       if (ctx.readiness.ready) {
         initializeSelection(nextMixFiles)
       } else {
+        setActiveTopMixName(null)
         setNavStack([])
         setSelectedFile(null)
       }
@@ -123,6 +130,7 @@ const MixEditor: React.FC = () => {
       setResourceReady(false)
       setMissingRequiredFiles(['ra2.mix', 'language.mix', 'multi.mix'])
       setMixFiles([])
+      setActiveTopMixName(null)
       setNavStack([])
       setSelectedFile(null)
     } finally {
@@ -134,22 +142,22 @@ const MixEditor: React.FC = () => {
     reloadResourceContext()
   }, [reloadResourceContext])
 
-  const handleImportGameDirectory = useCallback(async () => {
+  const handleReimportBaseDirectory = useCallback(async () => {
     setLoading(true)
-    resetImportProgress('准备导入目录资源...')
+    resetImportProgress('准备重新导入基座目录...')
     try {
       if (!FileSystemUtil.isOpfsSupported()) {
         alert('当前浏览器不支持持久化文件系统（OPFS），无法导入本体资源。')
         return
       }
       const dirHandle = await FileSystemUtil.showDirectoryPicker()
-      const result = await GameResBootstrap.importGameDirectory(
+      const result = await GameResBootstrap.reimportBaseFromDirectory(
         dirHandle,
         setProgressMessage,
         handleImportProgressEvent,
       )
       if (result.errors.length > 0) {
-        alert(`部分文件导入失败：\n${result.errors.slice(0, 8).join('\n')}`)
+        alert(`基座目录导入异常：\n${result.errors.slice(0, 8).join('\n')}`)
       }
       await reloadResourceContext()
     } catch (e: any) {
@@ -157,40 +165,38 @@ const MixEditor: React.FC = () => {
       handleImportProgressEvent({
         stage: 'error',
         stageLabel: '导入失败',
-        message: e?.message || '导入游戏目录失败',
-        errorMessage: e?.message || '导入游戏目录失败',
+        message: e?.message || '重新导入基座目录失败',
+        errorMessage: e?.message || '重新导入基座目录失败',
       })
-      alert(e?.message || '导入游戏目录失败')
+      alert(e?.message || '重新导入基座目录失败')
     } finally {
       setLoading(false)
       setProgressMessage('')
     }
   }, [reloadResourceContext, handleImportProgressEvent, resetImportProgress])
 
-  const handleImportArchive = useCallback(async (files: File[]) => {
+  const handleReimportBaseArchives = useCallback(async (files: File[]) => {
     if (!files.length) return
     setLoading(true)
-    resetImportProgress('准备导入归档资源...')
+    resetImportProgress('准备重新导入基座归档...')
     try {
-      for (const file of files) {
-        const result = await GameResBootstrap.importGameArchive(
-          file,
-          setProgressMessage,
-          handleImportProgressEvent,
-        )
-        if (result.errors.length > 0) {
-          alert(`${file.name} 导入异常：\n${result.errors.slice(0, 8).join('\n')}`)
-        }
+      const result = await GameResBootstrap.reimportBaseFromArchives(
+        files,
+        setProgressMessage,
+        handleImportProgressEvent,
+      )
+      if (result.errors.length > 0) {
+        alert(`基座归档导入异常：\n${result.errors.slice(0, 8).join('\n')}`)
       }
       await reloadResourceContext()
     } catch (e: any) {
       handleImportProgressEvent({
         stage: 'error',
         stageLabel: '导入失败',
-        message: e?.message || '导入归档失败',
-        errorMessage: e?.message || '导入归档失败',
+        message: e?.message || '重新导入基座归档失败',
+        errorMessage: e?.message || '重新导入基座归档失败',
       })
-      alert(e?.message || '导入归档失败')
+      alert(e?.message || '重新导入基座归档失败')
     } finally {
       setLoading(false)
       setProgressMessage('')
@@ -225,23 +231,80 @@ const MixEditor: React.FC = () => {
     }
   }, [reloadResourceContext, handleImportProgressEvent, resetImportProgress])
 
-  const handleClearResources = useCallback(async () => {
-    if (!confirm('确定清空浏览器中的游戏资源吗？此操作不可撤销。')) return
+  const handleClearNonBaseResources = useCallback(async () => {
+    if (!confirm('确定清空补丁/模组资源吗？此操作不会删除基座文件。')) return
     setLoading(true)
     try {
-      await GameResBootstrap.clearAllResources()
+      await GameResBootstrap.clearNonBaseResources(resourceContext?.activeModName ?? null)
       await reloadResourceContext()
     } catch (e: any) {
-      alert(e?.message || '清空资源失败')
+      alert(e?.message || '清空补丁/模组资源失败')
     } finally {
       setLoading(false)
       setProgressMessage('')
     }
-  }, [reloadResourceContext])
+  }, [resourceContext, reloadResourceContext])
+
+  const setWorkspaceMix = useCallback((mixName: string, selectFirstFile: boolean) => {
+    const mix = mixFiles.find((m) => m.info.name === mixName)
+    if (!mix) return
+    setActiveTopMixName(mix.info.name)
+    setNavStack([{ name: mix.info.name, info: mix.info, fileObj: mix.file }])
+    if (selectFirstFile) {
+      if (mix.info.files.length > 0) {
+        setSelectedFile(`${mix.info.name}/${mix.info.files[0].filename}`)
+      } else {
+        setSelectedFile(null)
+      }
+    }
+  }, [mixFiles])
 
   const handleFileSelect = useCallback((filePath: string) => {
     setSelectedFile(filePath)
+    const slash = filePath.indexOf('/')
+    if (slash <= 0) return
+    const mixName = filePath.substring(0, slash)
+    if (browserMode === 'repository' && mixName !== activeTopMixName) {
+      setWorkspaceMix(mixName, false)
+    }
+  }, [browserMode, activeTopMixName, setWorkspaceMix])
+
+  const handleBrowserModeChange = useCallback((mode: BrowserMode) => {
+    setBrowserMode(mode)
   }, [])
+
+  const handleActiveMixChange = useCallback((mixName: string) => {
+    setWorkspaceMix(mixName, true)
+  }, [setWorkspaceMix])
+
+  const workspaceMixFiles = useMemo(() => {
+    if (!mixFiles.length) return []
+    if (!activeTopMixName) return [mixFiles[0]]
+    const active = mixFiles.find((m) => m.info.name === activeTopMixName)
+    return active ? [active] : [mixFiles[0]]
+  }, [mixFiles, activeTopMixName])
+
+  const mixSourceLabelByName = useMemo(() => {
+    const map: Record<string, string> = {}
+    if (!resourceContext) return map
+    for (const archive of resourceContext.archives) {
+      if (map[archive.info.name]) continue
+      if (archive.bucket === 'base') map[archive.info.name] = 'base'
+      else if (archive.bucket === 'patch') map[archive.info.name] = 'patch'
+      else map[archive.info.name] = archive.modName ? `mod:${archive.modName}` : 'mod'
+    }
+    return map
+  }, [resourceContext])
+
+  useEffect(() => {
+    if (!mixFiles.length) {
+      setActiveTopMixName(null)
+      return
+    }
+    if (!activeTopMixName || !mixFiles.some((m) => m.info.name === activeTopMixName)) {
+      setActiveTopMixName(mixFiles[0].info.name)
+    }
+  }, [mixFiles, activeTopMixName])
 
   const currentContainer = navStack.length > 0 ? navStack[navStack.length - 1] : null
   const currentPrefix = useMemo(() => navStack.map(n => n.name).join('/'), [navStack])
@@ -328,10 +391,10 @@ const MixEditor: React.FC = () => {
           loading={loading}
           selectedFile={selectedFile}
           onExport={handleExport}
-          onImportGameDirectory={handleImportGameDirectory}
-          onImportArchive={handleImportArchive}
+          onReimportBaseDirectory={handleReimportBaseDirectory}
+          onReimportBaseArchives={handleReimportBaseArchives}
           onImportPatchMixes={handleImportPatchMixes}
-          onClearResources={handleClearResources}
+          onClearNonBaseResources={handleClearNonBaseResources}
           resourceReady={resourceReady}
           resourceSummary={
             progressMessage ||
@@ -361,7 +424,7 @@ const MixEditor: React.FC = () => {
                   input.multiple = true
                   input.onchange = (e) => {
                     const files = Array.from((e.target as HTMLInputElement).files || [])
-                    void handleImportArchive(files)
+                    void handleReimportBaseArchives(files)
                   }
                   input.click()
                 }}
@@ -371,7 +434,7 @@ const MixEditor: React.FC = () => {
               </button>
               <button
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm"
-                onClick={() => handleImportGameDirectory()}
+                onClick={() => handleReimportBaseDirectory()}
                 disabled={loading}
               >
                 选择游戏目录
@@ -392,11 +455,17 @@ const MixEditor: React.FC = () => {
           <div className="w-80 bg-gray-800 border-r border-gray-700">
             <FileTree
               mixFiles={mixFiles}
+              workspaceMixFiles={workspaceMixFiles}
+              browserMode={browserMode}
+              onBrowserModeChange={handleBrowserModeChange}
+              activeMixName={activeTopMixName}
+              onActiveMixChange={handleActiveMixChange}
+              mixSourceLabelByName={mixSourceLabelByName}
               selectedFile={selectedFile}
               onFileSelect={handleFileSelect}
               // rootless container view when we have a current container
-              container={currentContainer ? { info: currentContainer.info, name: currentContainer.name } : undefined}
-              rootless={!!currentContainer}
+              container={browserMode === 'workspace' && currentContainer ? { info: currentContainer.info, name: currentContainer.name } : undefined}
+              rootless={browserMode === 'workspace' && !!currentContainer}
               navPrefix={currentPrefix}
               onDrillDown={handleDrillDown}
             />
