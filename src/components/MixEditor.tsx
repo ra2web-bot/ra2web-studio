@@ -378,6 +378,11 @@ const MixEditor: React.FC = () => {
     }
   }, [navStack])
 
+  const handleNavigateUp = useCallback(() => {
+    if (navStack.length <= 1) return
+    handleBreadcrumbClick(navStack.length - 2)
+  }, [navStack, handleBreadcrumbClick])
+
   const handleExport = useCallback(async () => {
     try {
       if (!selectedFile) return
@@ -491,6 +496,7 @@ const MixEditor: React.FC = () => {
               rootless={browserMode === 'workspace' && !!currentContainer}
               navPrefix={currentPrefix}
               onDrillDown={handleDrillDown}
+              onNavigateUp={browserMode === 'workspace' && navStack.length > 1 ? handleNavigateUp : undefined}
             />
           </div>
 

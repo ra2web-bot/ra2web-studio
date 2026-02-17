@@ -8,6 +8,7 @@ import { loadPaletteByPath } from '../../services/palette/PaletteLoader'
 import { IndexedColorRenderer } from '../../services/palette/IndexedColorRenderer'
 import HexViewer from './HexViewer'
 import SearchableSelect from '../common/SearchableSelect'
+import { usePaletteHotkeys } from './usePaletteHotkeys'
 import type { PaletteSelectionInfo, Rgb } from '../../services/palette/PaletteTypes'
 import type { ResourceContext } from '../../services/gameRes/ResourceContext'
 
@@ -446,6 +447,7 @@ const TmpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
     () => [{ value: '', label: '自动(规则解析)' }, ...paletteList.map((p) => ({ value: p, label: p.split('/').pop() || p }))],
     [paletteList],
   )
+  usePaletteHotkeys(paletteOptions, palettePath, setPalettePath, true)
 
   if (fallbackToHex) {
     return (

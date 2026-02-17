@@ -6,6 +6,7 @@ import { PaletteParser } from '../../services/palette/PaletteParser'
 import { PaletteResolver } from '../../services/palette/PaletteResolver'
 import { loadPaletteByPath } from '../../services/palette/PaletteLoader'
 import SearchableSelect from '../common/SearchableSelect'
+import { usePaletteHotkeys } from './usePaletteHotkeys'
 import type { PaletteSelectionInfo, Rgb } from '../../services/palette/PaletteTypes'
 import type { ResourceContext } from '../../services/gameRes/ResourceContext'
 
@@ -228,6 +229,7 @@ const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
     () => [{ value: '', label: '自动(规则/内嵌)' }, ...paletteList.map((p) => ({ value: p, label: p.split('/').pop() || p }))],
     [paletteList],
   )
+  usePaletteHotkeys(paletteOptions, palettePath, setPalettePath, true)
 
   return (
     <div className="w-full h-full flex flex-col">

@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { File, Folder } from 'lucide-react'
 import { MixFileData } from './MixEditor'
+import SearchableSelect from './common/SearchableSelect'
 
 type BrowserMode = 'workspace' | 'repository'
 
@@ -28,6 +29,7 @@ interface FileTreeProps {
   rootless?: boolean
   navPrefix?: string // 如 a.mix/b.mix，便于拼接 path
   onDrillDown?: (filename: string) => void // 当点击的是 .mix 文件时触发
+  onNavigateUp?: () => void
 }
 
 const FileTree: React.FC<FileTreeProps> = ({
@@ -44,6 +46,7 @@ const FileTree: React.FC<FileTreeProps> = ({
   rootless,
   navPrefix,
   onDrillDown,
+  onNavigateUp,
 }) => {
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -133,6 +136,19 @@ const FileTree: React.FC<FileTreeProps> = ({
       || file.path.toLowerCase().includes(normalizedSearchQuery)
     ))
   }, [workspaceFileList, normalizedSearchQuery])
+  const activeMixOptions = useMemo(
+    () => mixFiles.map((mix) => {
+      const sourceLabel = mixSourceLabelByName?.[mix.info.name]
+      const label = sourceLabel === 'base' ? `${mix.info.name} [基座文件]` : mix.info.name
+      return {
+        value: mix.info.name,
+        label,
+        searchText: sourceLabel ?? '',
+      }
+    }),
+    [mixFiles, mixSourceLabelByName],
+  )
+  const activeMixValue = activeMixName ?? mixFiles[0]?.info.name ?? ''
   const isNestedWorkspace = Boolean(rootless && navPrefix && navPrefix.includes('/'))
 
   const renderFileRow = (file: FileItem, key: string) => {
@@ -211,27 +227,34 @@ const FileTree: React.FC<FileTreeProps> = ({
         {browserMode === 'workspace' && mixFiles.length > 1 && (
           <div className="mt-2">
             <label className="text-xs text-gray-400 block mb-1">当前激活 MIX</label>
-            <select
-              className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-100"
-              value={activeMixName ?? mixFiles[0].info.name}
-              onChange={(e) => onActiveMixChange(e.target.value)}
-            >
-              {mixFiles.map((mix, index) => {
-                const sourceLabel = mixSourceLabelByName?.[mix.info.name]
-                const displayName =
-                  sourceLabel === 'base' ? `${mix.info.name} [基座文件]` : mix.info.name
-                return (
-                  <option key={`${mix.info.name}-${index}`} value={mix.info.name}>
-                    {displayName}
-                  </option>
-                )
-              })}
-            </select>
+            <SearchableSelect
+              value={activeMixValue}
+              options={activeMixOptions}
+              onChange={(next) => {
+                if (next) onActiveMixChange(next)
+              }}
+              triggerClassName="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-left text-gray-100 flex items-center gap-2"
+              menuClassName="absolute z-50 mt-1 left-0 right-0 rounded border border-gray-600 bg-gray-700 shadow-xl"
+              searchPlaceholder="搜索 MIX..."
+              noResultsText="未找到匹配 MIX"
+              footerHint=""
+            />
           </div>
         )}
         {browserMode === 'workspace' && isNestedWorkspace && navPrefix && (
-          <div className="mt-2 text-xs text-gray-400 truncate" title={navPrefix}>
-            当前容器：{navPrefix}
+          <div className="mt-2 flex items-center gap-2">
+            <div className="text-xs text-gray-400 truncate flex-1" title={navPrefix}>
+              当前容器：{navPrefix}
+            </div>
+            {onNavigateUp && (
+              <button
+                type="button"
+                className="px-2 py-0.5 text-[11px] rounded border border-gray-600 bg-gray-700 text-gray-200 hover:bg-gray-600"
+                onClick={onNavigateUp}
+              >
+                返回上一级
+              </button>
+            )}
           </div>
         )}
       </div>
