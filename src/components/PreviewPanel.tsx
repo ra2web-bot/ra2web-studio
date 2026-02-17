@@ -8,6 +8,7 @@ import TxtViewer from './preview/TxtViewer'
 import PalViewer from './preview/PalViewer'
 import PcxViewer from './preview/PcxViewer'
 import ShpViewer from './preview/ShpViewer'
+import TmpViewer from './preview/TmpViewer'
 import VxlViewer from './preview/VxlViewer'
 import VxlViewer3D from './preview/VxlViewer3D.tsx'
 import HvaViewer from './preview/HvaViewer'
@@ -46,6 +47,14 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
         return <Box size={48} className="text-green-400" />
       case 'pcx':
         return <Image size={48} className="text-purple-400" />
+      case 'tmp':
+      case 'tem':
+      case 'sno':
+      case 'urb':
+      case 'ubn':
+      case 'des':
+      case 'lun':
+        return <Image size={48} className="text-orange-400" />
       case 'wav':
         return <Music size={48} className="text-yellow-400" />
       default:
@@ -69,6 +78,14 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
         return 'VXL 3D模型文件'
       case 'pcx':
         return 'PCX 图像文件'
+      case 'tmp':
+      case 'tem':
+      case 'sno':
+      case 'urb':
+      case 'ubn':
+      case 'des':
+      case 'lun':
+        return 'TMP 地图图块文件'
       case 'wav':
         return 'WAV 音频文件'
       default:
@@ -83,6 +100,10 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
     label: string
     Component: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resourceContext?: ResourceContext | null }>
   }
+  const tmpViews: ViewerDef[] = [
+    { key: 'image', label: '图像', Component: TmpViewer },
+    { key: 'hex', label: '十六进制', Component: HexViewer },
+  ]
   const viewsByExt: Record<string, ViewerDef[]> = {
     ini: [
       { key: 'text', label: '文本', Component: IniViewer },
@@ -117,6 +138,13 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
       { key: 'viewer', label: '3D', Component: HvaViewer },
       { key: 'hex', label: '十六进制', Component: HexViewer },
     ],
+    tmp: tmpViews,
+    tem: tmpViews,
+    sno: tmpViews,
+    urb: tmpViews,
+    ubn: tmpViews,
+    des: tmpViews,
+    lun: tmpViews,
   }
   const defaultViews: ViewerDef[] = [
     { key: 'hex', label: '十六进制', Component: HexViewer },

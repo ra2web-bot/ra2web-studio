@@ -38,6 +38,7 @@ export class ShpFile {
   private fromVirtualFile(file: VirtualFile): void {
     this.filename = file.filename;
     const s = file.stream as DataStream; // Assuming VirtualFile.stream is a DataStream
+    s.seek(0);
 
     // Original header format: Reserved (zero, 2 bytes), Width (2 bytes), Height (2 bytes), NumImages (2 bytes)
     const reserved = s.readInt16(); // Should be 0 for standard SHP(TD)

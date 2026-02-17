@@ -123,37 +123,46 @@ const ShpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
   useEffect(() => {
     if (!shpData || !canvasSize || !info) return
 
-    const canvas = canvasRef.current
-    if (!canvas) {
-      console.warn('[ShpViewer] canvasRef.current is null')
-      return
+    try {
+      const canvas = canvasRef.current
+      if (!canvas) {
+        console.warn('[ShpViewer] canvasRef.current is null')
+        return
+      }
+
+      // 设置canvas的实际尺寸
+      canvas.width = canvasSize.w
+      canvas.height = canvasSize.h
+
+      const { shp, palette } = shpData
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        console.error('[ShpViewer] Failed to get 2D context')
+        return
+      }
+
+      // 渲染当前帧
+      const renderIndex = Math.min(frame, shp.numImages - 1)
+      const img = shp.getImage(renderIndex)
+      const rgba = IndexedColorRenderer.indexedToRgba(img.imageData, img.width, img.height, palette, 0)
+      if (img.width <= 0 || img.height <= 0) {
+        setError('SHP 帧尺寸无效，无法渲染图像')
+        return
+      }
+      const imageData = new ImageData(Uint8ClampedArray.from(rgba), img.width, img.height)
+
+      // 计算图像在canvas中的居中位置
+      const offsetX = Math.max(0, (canvasSize.w - img.width) / 2)
+      const offsetY = Math.max(0, (canvasSize.h - img.height) / 2)
+
+      // 清除画布
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      // 居中绘制图像
+      ctx.putImageData(imageData, offsetX, offsetY)
+    } catch (e: any) {
+      setError(e?.message || 'SHP 渲染失败')
     }
-
-    // 设置canvas的实际尺寸
-    canvas.width = canvasSize.w
-    canvas.height = canvasSize.h
-
-    const { shp, palette } = shpData
-    const ctx = canvas.getContext('2d')
-    if (!ctx) {
-      console.error('[ShpViewer] Failed to get 2D context')
-      return
-    }
-
-    // 渲染当前帧
-    const img = shp.getImage(Math.min(frame, shp.numImages - 1))
-    const rgba = IndexedColorRenderer.indexedToRgba(img.imageData, img.width, img.height, palette, 0)
-    const imageData = new ImageData(rgba as any, img.width, img.height)
-
-    // 计算图像在canvas中的居中位置
-    const offsetX = Math.max(0, (canvasSize.w - img.width) / 2)
-    const offsetY = Math.max(0, (canvasSize.h - img.height) / 2)
-
-    // 清除画布
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-    // 居中绘制图像
-    ctx.putImageData(imageData, offsetX, offsetY)
   }, [frame, shpData, canvasSize, info])
 
   const paletteOptions = useMemo(

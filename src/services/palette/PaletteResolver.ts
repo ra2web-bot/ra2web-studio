@@ -4,7 +4,7 @@ import type { PaletteSelectionInfo } from './PaletteTypes'
 
 type MixFileData = { file: File; info: MixFileInfo }
 
-export type PaletteAssetKind = 'shp' | 'vxl' | 'pcx'
+export type PaletteAssetKind = 'shp' | 'vxl' | 'pcx' | 'tmp'
 
 export interface ResolvePaletteRequest {
   assetPath: string
@@ -25,6 +25,7 @@ export interface ResolvePaletteDecision {
 const THEATER_SUFFIX_MAP: Record<string, string> = {
   tem: 'tem',
   urb: 'urb',
+  ubn: 'ubn',
   des: 'des',
   lun: 'lun',
   sno: 'sno',
@@ -41,10 +42,32 @@ function inferTheaterSuffix(innerFilename: string): string {
   const lower = innerFilename.toLowerCase()
   const ext = lower.split('.').pop() ?? ''
   if (ext in THEATER_SUFFIX_MAP) return THEATER_SUFFIX_MAP[ext]
+  const compoundSuffix = ['tem', 'sno', 'urb', 'ubn', 'des', 'lun'].find(
+    (suffix) => lower.endsWith(`.${suffix}.shp`) || lower.endsWith(`.${suffix}.tmp`),
+  )
+  if (compoundSuffix) return compoundSuffix
   if (lower.endsWith('.sno.shp')) return 'sno'
   if (lower.endsWith('.des.shp')) return 'des'
   if (lower.endsWith('.lun.shp')) return 'lun'
   return 'tem'
+}
+
+function isTmpLikeFilename(lowerFilename: string): boolean {
+  return (
+    lowerFilename.endsWith('.tmp')
+    || lowerFilename.endsWith('.tem')
+    || lowerFilename.endsWith('.sno')
+    || lowerFilename.endsWith('.urb')
+    || lowerFilename.endsWith('.ubn')
+    || lowerFilename.endsWith('.des')
+    || lowerFilename.endsWith('.lun')
+    || lowerFilename.endsWith('.tem.tmp')
+    || lowerFilename.endsWith('.sno.tmp')
+    || lowerFilename.endsWith('.urb.tmp')
+    || lowerFilename.endsWith('.ubn.tmp')
+    || lowerFilename.endsWith('.des.tmp')
+    || lowerFilename.endsWith('.lun.tmp')
+  )
 }
 
 function getCandidateNames(assetKind: PaletteAssetKind, innerFilename: string): string[] {
@@ -56,9 +79,12 @@ function getCandidateNames(assetKind: PaletteAssetKind, innerFilename: string): 
     result.push('cameo.pal')
   }
 
-  if (assetKind === 'shp') {
+  if (assetKind === 'tmp') {
+    result.push(`iso${suffix}.pal`)
     result.push(`unit${suffix}.pal`)
-    if (lower.endsWith('.tmp') || lower.endsWith('.tem') || lower.endsWith('.urb') || lower.endsWith('.des')) {
+  } else if (assetKind === 'shp') {
+    result.push(`unit${suffix}.pal`)
+    if (isTmpLikeFilename(lower)) {
       result.push(`iso${suffix}.pal`)
     }
   } else if (assetKind === 'vxl') {
