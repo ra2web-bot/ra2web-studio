@@ -134,10 +134,16 @@ export class MixParser {
 
       entries.forEach((entry) => {
         const h = entry.hash >>> 0
-        const preferred = hashToName.get(h) ?? globalMap.get(h)
+        const lmdName = hashToName.get(h)
+        const gmdName = lmdName ? undefined : globalMap.get(h)
+        const preferred = lmdName ?? gmdName
         const hashHex = (entry.hash >>> 0).toString(16).toUpperCase().padStart(8, '0')
         const extGuess = this.guessExtensionByHeader(mixFile, entry)
-        const fallbackName = extGuess ? `${hashHex}.${extGuess}` : hashHex
+        const preferredExt = preferred ? this.getExtensionFromFilename(preferred) : ''
+        const shouldProbe = !extGuess || this.isTheaterTmpLikeExtension(preferredExt)
+        const structuralProbe = shouldProbe ? this.probeLegacyAssetType(mixFile, entry) : ''
+        const resolvedExt = this.normalizeAssetExtension(preferredExt, extGuess, structuralProbe)
+        const fallbackName = resolvedExt ? `${hashHex}.${resolvedExt}` : hashHex
         const filename = preferred ?? fallbackName
 
         files.push({
@@ -145,7 +151,7 @@ export class MixParser {
           hash: entry.hash,
           offset: entry.offset,
           length: entry.length,
-          extension: this.getExtensionFromFilename(filename),
+          extension: resolvedExt || this.getExtensionFromFilename(filename),
         })
       })
 
@@ -280,13 +286,35 @@ export class MixParser {
         s.seek(0)
         if (s.byteLength >= 6) {
           const count = s.readUint16()
-          s.readUint32()
+          const declaredDataSize = s.readUint32()
           const tableEnd = 6 + count * 12
-          if (count > 0 && count < 50000 && tableEnd <= entry.length) {
-            return 'mix'
+          const declaredTotal = tableEnd + declaredDataSize
+          const structurallyValid =
+            count > 0
+            && count < 50000
+            && tableEnd <= entry.length
+            && declaredDataSize > 0
+            && declaredTotal <= entry.length
+          if (structurallyValid) {
+            // 额外校验前几个条目的 offset/length 是否位于声明的数据段内，
+            // 避免把随机二进制误判成 .mix 并在下钻时崩溃。
+            const maxCheck = Math.min(count, 8, Math.floor((s.byteLength - 6) / 12))
+            let entriesLookValid = maxCheck > 0
+            for (let i = 0; i < maxCheck; i++) {
+              s.readUint32() // hash
+              const offset = s.readUint32()
+              const length = s.readUint32()
+              const end = offset + length
+              if (offset > declaredDataSize || length > declaredDataSize || end > declaredDataSize) {
+                entriesLookValid = false
+                break
+              }
+            }
+            if (entriesLookValid) return 'mix'
           }
         }
       }
+
       s.seek(0)
       const head32 = s.readString(Math.min(32, s.byteLength))
       if (head32.startsWith('JASC-PAL')) return 'pal'
@@ -323,6 +351,146 @@ export class MixParser {
     } catch {
       return ''
     }
+  }
+
+  // 基于 XCC 的 is_valid 规则做结构探测，用于无文件名映射时的扩展名回退。
+  private static probeLegacyAssetType(mix: MixFile, entry: MixEntry): '' | 'shp' | 'tmp' | 'tmp-ra' {
+    try {
+      const sliceLen = Math.min(entry.length, 4096)
+      const vf = (mix as any).openSliceById ? (mix as any).openSliceById(entry.hash, sliceLen) : null
+      if (!vf) return ''
+      const view = vf.stream.dataView
+      if (this.isLikelyShpTs(view, entry.length) || this.isLikelyShpTd(view, entry.length)) {
+        return 'shp'
+      }
+      if (this.isLikelyTmpTs(view, entry.length)) return 'tmp'
+      if (this.isLikelyTmpRa(view, entry.length)) return 'tmp-ra'
+      return ''
+    } catch {
+      return ''
+    }
+  }
+
+  private static isTheaterTmpLikeExtension(ext: string): boolean {
+    const lower = ext.toLowerCase()
+    return lower === 'tem' || lower === 'sno' || lower === 'urb' || lower === 'ubn' || lower === 'des' || lower === 'lun'
+  }
+
+  private static normalizeAssetExtension(
+    preferredExt: string,
+    sniffedExt: string,
+    structuralProbe: '' | 'shp' | 'tmp' | 'tmp-ra',
+  ): string {
+    if (structuralProbe === 'shp') return 'shp'
+    if (structuralProbe === 'tmp' || structuralProbe === 'tmp-ra') return 'tmp'
+    if (sniffedExt) return sniffedExt
+    if (this.isTheaterTmpLikeExtension(preferredExt)) return 'tmp'
+    return preferredExt
+  }
+
+  private static isLikelyShpTs(view: DataView, totalLength: number): boolean {
+    if (view.byteLength < 8 || totalLength < 8) return false
+    const zero = view.getUint16(0, true)
+    const cx = view.getUint16(2, true)
+    const cy = view.getUint16(4, true)
+    const cImages = view.getUint16(6, true)
+    if (zero !== 0 || cImages < 1 || cImages > 10000) return false
+    const indexBytes = cImages * 20
+    const minDataOffset = 8 + indexBytes
+    if (minDataOffset > totalLength) return false
+
+    const maxCheck = Math.min(cImages, 64)
+    const maxReadable = Math.floor((view.byteLength - 8) / 20)
+    const checks = Math.min(maxCheck, maxReadable)
+    if (checks <= 0) return false
+
+    for (let i = 0; i < checks; i++) {
+      const base = 8 + i * 20
+      const x = view.getInt16(base + 0, true)
+      const y = view.getInt16(base + 2, true)
+      const w = view.getInt16(base + 4, true)
+      const h = view.getInt16(base + 6, true)
+      const compression = view.getInt32(base + 8, true)
+      const zero2 = view.getInt32(base + 16, true)
+      const offset = view.getInt32(base + 20 - 4, true)
+
+      if (w === 0 && h === 0 && offset === 0) continue
+      if (w <= 0 || h <= 0) return false
+      if (x + w > cx || y + h > cy) return false
+      if (zero2 !== 0) return false
+      if (offset < minDataOffset) return false
+      if ((compression & 2) !== 0) {
+        if (offset > totalLength) return false
+      } else {
+        if (offset + w * h > totalLength) return false
+      }
+    }
+    return true
+  }
+
+  private static isLikelyShpTd(view: DataView, totalLength: number): boolean {
+    const headerSize = 14
+    if (view.byteLength < headerSize || totalLength < headerSize) return false
+    const cImages = view.getInt16(0, true)
+    if (cImages < 1 || cImages > 1000) return false
+    const indexBytes = 8 * (cImages + 2)
+    if (headerSize + indexBytes > totalLength) return false
+    const needed = headerSize + (cImages + 1) * 8 + 4
+    if (view.byteLength < needed) return false
+    const mask = 0x0fffffff
+    const offsetCf = view.getUint32(headerSize + cImages * 8 + 0, true) & mask
+    const offsetCf1 = view.getUint32(headerSize + (cImages + 1) * 8 + 0, true) & mask
+    if (offsetCf !== totalLength || offsetCf1 !== 0) return false
+    return true
+  }
+
+  private static isLikelyTmpTs(view: DataView, totalLength: number): boolean {
+    if (view.byteLength < 16 || totalLength < 16) return false
+    const cblocksX = view.getUint32(0, true)
+    const cblocksY = view.getUint32(4, true)
+    const cx = view.getUint32(8, true)
+    const cy = view.getUint32(12, true)
+    if (!cblocksX || !cblocksY) return false
+    if (cx !== 48 && cx !== 60) return false
+    if (cy * 2 !== cx) return false
+    const cTiles = cblocksX * cblocksY
+    if (cTiles <= 0 || cTiles > 4096) return false
+    const indexBytes = cTiles * 4
+    const indexStart = 16
+    if (indexStart + indexBytes > totalLength) return false
+    const maxCheck = Math.min(cTiles, 16)
+    const maxReadable = Math.floor((view.byteLength - indexStart) / 4)
+    const checks = Math.min(maxCheck, maxReadable)
+    for (let i = 0; i < checks; i++) {
+      const offset = view.getUint32(indexStart + i * 4, true)
+      if (offset === 0) continue
+      if (offset < indexStart + indexBytes) return false
+      if (offset + 48 > totalLength) return false
+    }
+    return true
+  }
+
+  private static isLikelyTmpRa(view: DataView, totalLength: number): boolean {
+    if (view.byteLength < 24 || totalLength < 40) return false
+    const cx = view.getUint16(0, true)
+    const cy = view.getUint16(2, true)
+    const cTiles = view.getUint16(4, true)
+    const zero1 = view.getUint16(6, true)
+    const size = view.getUint32(8, true)
+    const imageOffset = view.getUint32(12, true)
+    const zero2 = view.getUint32(16, true)
+    const id = view.getUint32(20, true)
+    return (
+      cx === 24
+      && cy === 24
+      && cTiles > 0
+      && cTiles <= 128
+      && zero1 === 0
+      && size === totalLength
+      && imageOffset <= totalLength
+      && zero2 === 0
+      && id === 0x0d1affff
+    )
   }
 
   // 创建local mix database数据（与XCC Mixer保持一致）

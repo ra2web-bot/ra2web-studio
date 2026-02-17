@@ -60,6 +60,7 @@ const FileTree: React.FC<FileTreeProps> = ({
       'xif': 'xif',
       'mix': 'mix',
       'shp': 'shp',
+      'tmp': 'tmp(ts)',
       'vxl': 'vxl',
       'pal': 'pal',
       'wav': 'wav',

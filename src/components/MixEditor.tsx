@@ -331,8 +331,19 @@ const MixEditor: React.FC = () => {
       } else {
         // 从 VirtualFile 容器提取
         const ds = currentContainer.fileObj.stream as DataStream
+        ds.seek(0)
         const mix = new MixFileDataStream(ds)
-        if (mix.containsFile(filename)) {
+        const containsByName = mix.containsFile(filename)
+        if (!containsByName) {
+          const idMatch = filename.match(/^([0-9A-Fa-f]{8})(?:\.[^.]+)?$/)
+          if (idMatch) {
+            const id = parseInt(idMatch[1], 16) >>> 0
+            if (mix.containsId(id)) {
+              childVf = mix.openById(id, filename)
+            }
+          }
+        }
+        if (containsByName) {
           childVf = mix.openFile(filename)
         }
       }

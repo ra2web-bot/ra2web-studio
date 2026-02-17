@@ -48,80 +48,87 @@ export class MixFile {
 
   private parseRaHeader(): number {
     const e = this.stream;
-    var t: any = e.mapUint8Array(80),
-      i: any = new BlowfishKey().decryptKey(t),
-      r: any = e.mapUint32Array(2);
+    const keySource = e.mapUint8Array(80)
+    const decryptedKey = new BlowfishKey().decryptKey(keySource)
+    const encryptedHeaderBlock = new Uint32Array(2)
+    encryptedHeaderBlock[0] = e.readUint32()
+    encryptedHeaderBlock[1] = e.readUint32()
 
-    const s = new Blowfish(i);
-    let a = new DataStream(s.decrypt(r));
+    const blowfish = new Blowfish(decryptedKey)
+    let headerStream = new DataStream(blowfish.decrypt(encryptedHeaderBlock))
 
-    t = a.readUint16(); // 重新赋值t为文件数量，就像原项目一样
+    const fileCount = headerStream.readUint16()
+    const declaredDataSize = headerStream.readUint32()
 
-    a.readUint32(), (e.position = this.headerStart);
-    (i = 6 + t * MixEntry.size),
-      (t = ((3 + i) / 4) | 0),
-      (r = e.mapUint32Array(t + (t % 2)));
+    e.position = this.headerStart
+    let headerBytes = 6 + fileCount * MixEntry.size
+    let encryptedWordCount = ((3 + headerBytes) / 4) | 0
+    const encryptedIndexWords = new Uint32Array(encryptedWordCount + (encryptedWordCount % 2))
+    for (let idx = 0; idx < encryptedIndexWords.length; idx++) {
+      if (e.position + 4 > e.byteLength) {
+        throw new Error('Encrypted MIX header is truncated')
+      }
+      encryptedIndexWords[idx] = e.readUint32()
+    }
 
-    a = new DataStream(s.decrypt(r));
-
-    i = this.headerStart + i + ((1 + (~i >>> 0)) & 7);
-
-    this.parseTdHeader(a);
-    return i;
+    headerStream = new DataStream(blowfish.decrypt(encryptedIndexWords))
+    headerBytes = this.parseTdHeader(headerStream)
+    const dataStart = this.headerStart + headerBytes + ((1 + (~headerBytes >>> 0)) & 7)
+    if (dataStart + declaredDataSize > e.byteLength) {
+      throw new Error('Encrypted MIX declares data section outside file bounds')
+    }
+    return dataStart
   }
 
   private parseTdHeader(e: DataStream): number {
-    var t = e.readUint16();
-    e.readUint32();
+    const fileCount = e.readUint16();
+    const declaredDataSize = e.readUint32();
+    const tableBytes = fileCount * MixEntry.size
+    if (e.position + tableBytes > e.byteLength) {
+      throw new Error('Invalid MIX header: index table exceeds stream length')
+    }
 
-    let successfulEntries = 0;
-    let failedEntries = 0;
-    let duplicateHashes = 0;
     const seenHashes = new Set<number>();
-
-    for (let r = 0; r < t; r++) {
-      try {
-        // 检查是否有足够的数据读取一个完整的条目（12字节）
-        if (e.position + 12 > e.byteLength) {
-          console.log(`[Our] Entry ${r + 1}: Not enough data remaining. Position: ${e.position}, Remaining: ${e.byteLength - e.position}`);
-          failedEntries++;
-          break;
-        }
-
-        var i = new MixEntry(
-          e.readUint32(),
-          e.readUint32(),
-          e.readUint32(),
-        );
-
-        if (r < 5) {
-          console.log(`[Our] Entry ${r + 1}: hash=0x${i.hash.toString(16).toUpperCase()}, offset=${i.offset}, length=${i.length}`);
-          // 显示当前位置的原始字节数据（避免 DataStream.buffer 触发整体拷贝）
-          const currentPos = e.position - 12; // 回到条目开始位置
-          const rawBytes = new Uint8Array(e.dataView.buffer, e.dataView.byteOffset + currentPos, 12);
-          console.log(`[Our] Entry ${r + 1} raw bytes:`, Array.from(rawBytes));
-        }
-
-        // 检查重复哈希
-        if (seenHashes.has(i.hash)) {
-          duplicateHashes++;
-          if (duplicateHashes <= 10) {
-            console.log(`[Our] Duplicate hash detected at entry ${r + 1}: 0x${i.hash.toString(16).toUpperCase()}`);
-          }
-        } else {
-          seenHashes.add(i.hash);
-        }
-
-        this.index.set(i.hash, i);
-        successfulEntries++;
-      } catch (error) {
-        console.log(`[Our] Entry ${r + 1}: Error reading entry:`, error);
-        failedEntries++;
-        break;
+    for (let r = 0; r < fileCount; r++) {
+      if (e.position + 12 > e.byteLength) {
+        throw new Error('Invalid MIX header: entry is truncated')
       }
+
+      const hash = e.readUint32()
+      const offset = e.readUint32()
+      const length = e.readUint32()
+      const end = offset + length
+
+      if (offset > declaredDataSize || length > declaredDataSize || end > declaredDataSize) {
+        throw new Error('Invalid MIX header: entry range exceeds declared data section')
+      }
+
+      if (!seenHashes.has(hash)) {
+        seenHashes.add(hash)
+      }
+
+      this.index.set(hash, new MixEntry(hash, offset, length))
     }
 
     return e.position;
+  }
+
+  private createVirtualFileFromEntry(entry: MixEntry, filename: string): VirtualFile {
+    const absoluteOffset = this.dataStart + entry.offset
+    const absoluteEnd = absoluteOffset + entry.length
+    if (
+      absoluteOffset < 0
+      || entry.length < 0
+      || absoluteEnd > this.stream.byteLength
+    ) {
+      throw new Error(`Invalid MIX entry range for "${filename}"`)
+    }
+    return VirtualFile.factory(
+      this.stream.dataView,
+      filename,
+      absoluteOffset,
+      entry.length,
+    )
   }
 
   public containsFile(filename: string): boolean { // 'e' in original
@@ -143,12 +150,7 @@ export class MixFile {
     // The 'this.stream' here is the DataStream of the entire MIX file.
     // 'VirtualFile.factory' in original was i.VirtualFile.factory
     // It expects the source DataStream (or DataView), filename, absolute offset, and length.
-    return VirtualFile.factory(
-      this.stream.dataView,
-      filename,
-      this.dataStart + entry.offset, // entry.offset is relative to dataStart
-      entry.length
-    );
+    return this.createVirtualFileFromEntry(entry, filename);
   }
 
   /**
@@ -164,11 +166,9 @@ export class MixFile {
     if (!entry) {
       throw new Error(`File id 0x${(id >>> 0).toString(16).toUpperCase()} not found`);
     }
-    return VirtualFile.factory(
-      this.stream.dataView,
+    return this.createVirtualFileFromEntry(
+      entry,
       filename ?? `file_${(id >>> 0).toString(16).toUpperCase()}`,
-      this.dataStart + entry.offset,
-      entry.length
     );
   }
 
@@ -181,11 +181,9 @@ export class MixFile {
       throw new Error(`File id 0x${(id >>> 0).toString(16).toUpperCase()} not found`);
     }
     const sliceLen = Math.max(0, Math.min(length, entry.length));
-    return VirtualFile.factory(
-      this.stream.dataView,
+    return this.createVirtualFileFromEntry(
+      new MixEntry(entry.hash, entry.offset, sliceLen),
       `slice_${(id >>> 0).toString(16).toUpperCase()}`,
-      this.dataStart + entry.offset,
-      sliceLen
     );
   }
 
