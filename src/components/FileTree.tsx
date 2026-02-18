@@ -1,9 +1,11 @@
 import React, { useMemo, useState } from 'react'
-import { File, Folder } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, File, Folder } from 'lucide-react'
 import { MixFileData } from './MixEditor'
 import SearchableSelect from './common/SearchableSelect'
 
 type BrowserMode = 'workspace' | 'repository'
+type SortColumn = 'filename' | 'type' | 'size'
+type SortDirection = 'asc' | 'desc'
 
 interface FileItem {
   filename: string
@@ -49,6 +51,10 @@ const FileTree: React.FC<FileTreeProps> = ({
   onNavigateUp,
 }) => {
   const [searchQuery, setSearchQuery] = useState('')
+  const [sortState, setSortState] = useState<{ column: SortColumn | null; direction: SortDirection | null }>({
+    column: null,
+    direction: null,
+  })
 
   // 格式化文件大小显示
   const formatFileSize = (bytes: number): string => {
@@ -63,6 +69,54 @@ const FileTree: React.FC<FileTreeProps> = ({
   const getFileTypeName = (extension: string): string => {
     const ext = (extension || '').trim().toLowerCase()
     return ext || '-'
+  }
+
+  const nextSortState = (column: SortColumn) => {
+    setSortState((prev) => {
+      if (prev.column !== column) {
+        return { column, direction: 'asc' }
+      }
+      if (prev.direction === 'asc') {
+        return { column, direction: 'desc' }
+      }
+      if (prev.direction === 'desc') {
+        return { column: null, direction: null }
+      }
+      return { column, direction: 'asc' }
+    })
+  }
+
+  const getSortIndicator = (column: SortColumn): React.ReactNode => {
+    const baseClass = 'inline-block ml-1 align-middle text-gray-400'
+    if (sortState.column !== column || !sortState.direction) {
+      return <ArrowUpDown size={12} className={`${baseClass} opacity-60`} aria-hidden="true" />
+    }
+    if (sortState.direction === 'asc') {
+      return <ArrowUp size={12} className={baseClass} aria-hidden="true" />
+    }
+    return <ArrowDown size={12} className={baseClass} aria-hidden="true" />
+  }
+
+  const sortFileItems = (files: FileItem[]): FileItem[] => {
+    const { column, direction } = sortState
+    if (!column || !direction) return files
+    const sorted = [...files].sort((a, b) => {
+      let result = 0
+      if (column === 'filename') {
+        result = a.filename.localeCompare(b.filename, undefined, { sensitivity: 'base' })
+      } else if (column === 'type') {
+        result = getFileTypeName(a.extension).localeCompare(getFileTypeName(b.extension), undefined, {
+          sensitivity: 'base',
+        })
+      } else if (column === 'size') {
+        result = a.length - b.length
+      }
+      if (result === 0) {
+        result = a.filename.localeCompare(b.filename, undefined, { sensitivity: 'base' })
+      }
+      return direction === 'asc' ? result : -result
+    })
+    return sorted
   }
 
   const toFileItem = (mixName: string, file: any, prefix?: string): FileItem => ({
@@ -123,6 +177,14 @@ const FileTree: React.FC<FileTreeProps> = ({
       || file.path.toLowerCase().includes(normalizedSearchQuery)
     ))
   }, [workspaceFileList, normalizedSearchQuery])
+  const sortedWorkspaceFileList = useMemo(
+    () => sortFileItems(filteredWorkspaceFileList),
+    [filteredWorkspaceFileList, sortState],
+  )
+  const sortedRepositoryGroups = useMemo(
+    () => repositoryGroups.map((group) => ({ ...group, files: sortFileItems(group.files) })),
+    [repositoryGroups, sortState],
+  )
   const activeMixOptions = useMemo(
     () => mixFiles.map((mix) => {
       const sourceLabel = mixSourceLabelByName?.[mix.info.name]
@@ -248,25 +310,46 @@ const FileTree: React.FC<FileTreeProps> = ({
 
       {/* 表格头部 */}
       <div className="flex text-xs font-semibold text-gray-500 uppercase tracking-wide bg-gray-800 border-b border-gray-700">
-        <div className="flex-1 min-w-0 px-2 py-1">文件名</div>
-        <div className="w-16 text-center px-2 py-1">类型</div>
-        <div className="w-20 text-right px-2 py-1">大小</div>
+        <button
+          type="button"
+          className="flex-1 min-w-0 px-2 py-1 text-left hover:bg-gray-700/60 transition-colors"
+          onClick={() => nextSortState('filename')}
+          title="按文件名排序：正序 / 倒序 / 取消"
+        >
+          文件名 {getSortIndicator('filename')}
+        </button>
+        <button
+          type="button"
+          className="w-16 text-center px-2 py-1 hover:bg-gray-700/60 transition-colors"
+          onClick={() => nextSortState('type')}
+          title="按类型排序：正序 / 倒序 / 取消"
+        >
+          类型 {getSortIndicator('type')}
+        </button>
+        <button
+          type="button"
+          className="w-20 text-right px-2 py-1 hover:bg-gray-700/60 transition-colors"
+          onClick={() => nextSortState('size')}
+          title="按大小排序：正序 / 倒序 / 取消"
+        >
+          大小 {getSortIndicator('size')}
+        </button>
       </div>
 
       {/* 表格内容 */}
       <div className="text-sm flex-1 overflow-y-auto">
         {browserMode === 'workspace' ? (
           workspaceFileList.length > 0 ? (
-            filteredWorkspaceFileList.length > 0 ? (
-              filteredWorkspaceFileList.map((file, index) => renderFileRow(file, `${file.path}-${index}`))
+            sortedWorkspaceFileList.length > 0 ? (
+              sortedWorkspaceFileList.map((file, index) => renderFileRow(file, `${file.path}-${index}`))
             ) : (
               <div className="px-3 py-3 text-xs text-gray-400">未找到匹配素材。</div>
             )
           ) : (
             <div className="px-3 py-3 text-xs text-gray-400">当前工作区暂无可显示文件。</div>
           )
-        ) : repositoryGroups.length > 0 ? (
-          repositoryGroups.map((group, groupIndex) => (
+        ) : sortedRepositoryGroups.length > 0 ? (
+          sortedRepositoryGroups.map((group, groupIndex) => (
             <React.Fragment key={`${group.mixName}-${groupIndex}`}>
               <div className="flex items-center justify-between px-2 py-1 border-b border-gray-700 bg-gray-700">
                 <div className="text-xs text-gray-200 truncate" title={group.mixName}>
