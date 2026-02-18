@@ -7,39 +7,53 @@ import { MixEntry } from '../data/MixEntry'
  */
 export class GlobalMixDatabase {
   private static cache: Map<number, string> | null = null
-  private static tried = false
+  private static loadingPromise: Promise<Map<number, string>> | null = null
 
   static async get(): Promise<Map<number, string>> {
     if (this.cache) return this.cache
-    if (this.tried) return new Map()
-    this.tried = true
+    if (this.loadingPromise) return this.loadingPromise
+
+    this.loadingPromise = (async () => {
+      try {
+        const urls = [
+          '/global-mix-database.dat',
+          '/global mix database.dat',
+        ]
+        let arrayBuffer: ArrayBuffer | null = null
+        for (const url of urls) {
+          try {
+            const res = await fetch(url, { cache: 'no-cache' })
+            if (res.ok) {
+              arrayBuffer = await res.arrayBuffer()
+              break
+            }
+          } catch {}
+        }
+        if (!arrayBuffer) {
+          const empty = new Map<number, string>()
+          this.cache = empty
+          return empty
+        }
+        // 防止 dev server 回退 index.html（200 OK）被误解析为数据库。
+        if (this.looksLikeHtml(arrayBuffer)) {
+          const empty = new Map<number, string>()
+          this.cache = empty
+          return empty
+        }
+        const map = this.parse(arrayBuffer)
+        this.cache = map
+        return map
+      } catch {
+        const empty = new Map<number, string>()
+        this.cache = empty
+        return empty
+      }
+    })()
+
     try {
-      const urls = [
-        '/global-mix-database.dat',
-        '/global mix database.dat',
-      ]
-      let arrayBuffer: ArrayBuffer | null = null
-      for (const url of urls) {
-        try {
-          const res = await fetch(url, { cache: 'no-cache' })
-          if (res.ok) {
-            arrayBuffer = await res.arrayBuffer()
-            break
-          }
-        } catch {}
-      }
-      if (!arrayBuffer) {
-        return new Map()
-      }
-      // 防止 dev server 回退 index.html（200 OK）被误解析为数据库。
-      if (this.looksLikeHtml(arrayBuffer)) {
-        return new Map()
-      }
-      const map = this.parse(arrayBuffer)
-      this.cache = map
-      return map
-    } catch {
-      return new Map()
+      return await this.loadingPromise
+    } finally {
+      this.loadingPromise = null
     }
   }
 
