@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.15",
     "@monaco-editor/react": "4.7.0",
     "@ra2web/wavefile": "^1.0.2",
     "@radix-ui/react-slot": "^1.0.2",

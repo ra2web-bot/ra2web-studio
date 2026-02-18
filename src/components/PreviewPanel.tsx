@@ -1,10 +1,11 @@
 import React, { useMemo, useState, useEffect } from 'react'
-import { Image, Box, FileText, Music, Info, Archive } from 'lucide-react'
+import { Image, Box, FileText, Music, Info, Archive, Video } from 'lucide-react'
 import { MixFileInfo } from '../services/MixParser'
 import IniViewer from './preview/IniViewer'
 import DatViewer from './preview/DatViewer'
 import HexViewer from './preview/HexViewer'
 import TxtViewer from './preview/TxtViewer'
+import CsfViewer from './preview/CsfViewer'
 import PalViewer from './preview/PalViewer'
 import PcxViewer from './preview/PcxViewer'
 import ShpViewer from './preview/ShpViewer'
@@ -15,6 +16,7 @@ import HvaViewer from './preview/HvaViewer'
 import MixDirectoryViewer from './preview/MixDirectoryViewer'
 import WavViewer from './preview/WavViewer'
 import MapViewer from './preview/MapViewer'
+import BikViewer from './preview/BikViewer'
 import type { ResourceContext } from '../services/gameRes/ResourceContext'
 
 type MixFileData = { file: File; info: MixFileInfo }
@@ -64,6 +66,10 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
         return <Image size={48} className="text-orange-400" />
       case 'wav':
         return <Music size={48} className="text-yellow-400" />
+      case 'bik':
+        return <Video size={48} className="text-rose-400" />
+      case 'csf':
+        return <FileText size={48} className="text-sky-400" />
       case 'map':
       case 'mpr':
         return <Image size={48} className="text-emerald-400" />
@@ -84,6 +90,8 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
         return 'INI 配置文件'
       case 'txt':
         return '文本文件'
+      case 'csf':
+        return 'CSF 字符串表'
       case 'pal':
         return '调色板文件'
       case 'shp':
@@ -102,6 +110,8 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
         return 'TMP 地图图块文件'
       case 'wav':
         return 'WAV 音频文件'
+      case 'bik':
+        return 'BIK 视频文件'
       case 'map':
       case 'mpr':
         return '地图文件'
@@ -147,6 +157,10 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
       { key: 'text', label: '文本', Component: TxtViewer },
       { key: 'hex', label: '十六进制', Component: HexViewer },
     ],
+    csf: [
+      { key: 'viewer', label: 'CSF', Component: CsfViewer },
+      { key: 'hex', label: '十六进制', Component: HexViewer },
+    ],
     pal: [
       { key: 'swatches', label: '色板', Component: PalViewer },
       { key: 'hex', label: '十六进制', Component: HexViewer },
@@ -166,6 +180,10 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
     ],
     wav: [
       { key: 'audio', label: '音频', Component: WavViewer },
+      { key: 'hex', label: '十六进制', Component: HexViewer },
+    ],
+    bik: [
+      { key: 'video', label: '视频', Component: BikViewer },
       { key: 'hex', label: '十六进制', Component: HexViewer },
     ],
     hva: [

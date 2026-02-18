@@ -1,17 +1,90 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { Info, Palette, Layers, FileText } from 'lucide-react'
 import { MixFileData } from './MixEditor'
+import { MixParser } from '../services/MixParser'
+import { CsfFile } from '../data/CsfFile'
 
 interface PropertiesPanelProps {
   selectedFile: string | null
   mixFiles: MixFileData[]
 }
 
+interface ParsedPath {
+  mixName: string
+  innerPath: string
+  filename: string
+}
+
+interface CsfMetadata {
+  version: number
+  languageName: string
+  declaredLabels: number
+  declaredValues: number
+  parsedLabels: number
+}
+
+function parseSelectedPath(filePath: string): ParsedPath | null {
+  const slash = filePath.indexOf('/')
+  if (slash <= 0) return null
+  const mixName = filePath.substring(0, slash)
+  const innerPath = filePath.substring(slash + 1)
+  const filename = innerPath.split('/').pop() || ''
+  if (!filename) return null
+  return { mixName, innerPath, filename }
+}
+
 const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedFile, mixFiles }) => {
+  const [csfMetadata, setCsfMetadata] = useState<CsfMetadata | null>(null)
+  const [csfLoading, setCsfLoading] = useState(false)
+  const [csfError, setCsfError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let disposed = false
+
+    async function loadCsfMetadata() {
+      setCsfMetadata(null)
+      setCsfError(null)
+      setCsfLoading(false)
+
+      if (!selectedFile) return
+      const parsedPath = parseSelectedPath(selectedFile)
+      if (!parsedPath) return
+      const extension = parsedPath.filename.split('.').pop()?.toLowerCase() || ''
+      if (extension !== 'csf') return
+
+      setCsfLoading(true)
+      try {
+        const mix = mixFiles.find((item) => item.info.name === parsedPath.mixName)
+        if (!mix) throw new Error('MIX not found')
+        const vf = await MixParser.extractFile(mix.file, parsedPath.innerPath)
+        if (!vf) throw new Error('CSF file not found in MIX')
+        const parsed = CsfFile.fromVirtualFile(vf)
+        if (disposed) return
+        setCsfMetadata({
+          version: parsed.version,
+          languageName: parsed.languageName,
+          declaredLabels: parsed.stats.declaredLabels,
+          declaredValues: parsed.stats.declaredValues,
+          parsedLabels: parsed.stats.parsedLabels,
+        })
+      } catch (e: any) {
+        if (!disposed) setCsfError(e?.message || 'Failed to parse CSF metadata')
+      } finally {
+        if (!disposed) setCsfLoading(false)
+      }
+    }
+
+    loadCsfMetadata()
+    return () => {
+      disposed = true
+    }
+  }, [selectedFile, mixFiles])
+
   const getFileProperties = (filePath: string) => {
-    const parts = filePath.split('/')
-    const mixName = parts[0]
-    const filename = parts[1]
+    const parsedPath = parseSelectedPath(filePath)
+    const mixName = parsedPath?.mixName || ''
+    const innerPath = parsedPath?.innerPath || ''
+    const filename = parsedPath?.filename || ''
 
     if (!filename) {
       return {
@@ -26,7 +99,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedFile, mixFile
 
     // 查找对应的MIX文件和文件信息
     const mixData = mixFiles.find(mix => mix.info.name === mixName)
-    const fileInfo = mixData?.info.files.find((file: any) => file.filename === filename)
+    const fileInfo = mixData?.info.files.find((file: any) => file.filename === innerPath || file.filename === filename)
 
     const baseProps = {
       name: filename,
@@ -67,6 +140,11 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedFile, mixFile
           planes: 1,
           encoding: 'RLE',
         }
+      case 'csf':
+        return {
+          ...baseProps,
+          format: 'CSF (Westwood String Table)',
+        }
       default:
         return baseProps
     }
@@ -84,6 +162,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedFile, mixFile
   }
 
   const properties = getFileProperties(selectedFile)
+  const isCsf = properties.type === 'CSF'
 
   return (
     <div className="h-full flex flex-col">
@@ -228,6 +307,47 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedFile, mixFile
                 <span className="text-white">{properties.encoding}</span>
               </div>
             </div>
+          </div>
+        )}
+
+        {isCsf && (
+          <div className="space-y-2">
+            <h4 className="text-sm font-semibold text-gray-300 flex items-center">
+              <FileText size={16} className="mr-2" />
+              CSF 信息
+            </h4>
+            {'format' in properties && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-400">格式:</span>
+                <span className="text-white">{properties.format}</span>
+              </div>
+            )}
+            {csfLoading && (
+              <div className="text-xs text-gray-500">正在读取 CSF 元数据...</div>
+            )}
+            {csfError && !csfLoading && (
+              <div className="text-xs text-red-400">读取失败：{csfError}</div>
+            )}
+            {csfMetadata && !csfLoading && (
+              <div className="space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">版本:</span>
+                  <span className="text-white">{csfMetadata.version}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">语言:</span>
+                  <span className="text-white">{csfMetadata.languageName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">标签数:</span>
+                  <span className="text-white">{csfMetadata.parsedLabels}/{csfMetadata.declaredLabels}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">声明值数:</span>
+                  <span className="text-white">{csfMetadata.declaredValues}</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

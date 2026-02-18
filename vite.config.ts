@@ -6,6 +6,10 @@ export default defineConfig({
   server: {
     port: 3000,
     host: true,
+    headers: {
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Opener-Policy': 'same-origin',
+    },
   },
   build: {
     rollupOptions: {
@@ -18,5 +22,10 @@ export default defineConfig({
   },
   optimizeDeps: {
     include: ['react', 'react-dom', 'three'],
+    exclude: ['@ffmpeg/ffmpeg'],
   },
+  worker: {
+    format: 'es',
+  },
+  assetsInclude: ['**/*.wasm'],
 })
