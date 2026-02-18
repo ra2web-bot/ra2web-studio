@@ -14,6 +14,7 @@ import VxlViewer3D from './preview/VxlViewer3D.tsx'
 import HvaViewer from './preview/HvaViewer'
 import MixDirectoryViewer from './preview/MixDirectoryViewer'
 import WavViewer from './preview/WavViewer'
+import MapViewer from './preview/MapViewer'
 import type { ResourceContext } from '../services/gameRes/ResourceContext'
 
 type MixFileData = { file: File; info: MixFileInfo }
@@ -63,6 +64,9 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
         return <Image size={48} className="text-orange-400" />
       case 'wav':
         return <Music size={48} className="text-yellow-400" />
+      case 'map':
+      case 'mpr':
+        return <Image size={48} className="text-emerald-400" />
       case 'mix':
       case 'mmx':
       case 'yro':
@@ -98,6 +102,9 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
         return 'TMP 地图图块文件'
       case 'wav':
         return 'WAV 音频文件'
+      case 'map':
+      case 'mpr':
+        return '地图文件'
       case 'mix':
       case 'mmx':
       case 'yro':
@@ -120,6 +127,11 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
   ]
   const mixViews: ViewerDef[] = [
     { key: 'directory', label: '目录', Component: MixDirectoryViewer },
+    { key: 'hex', label: '十六进制', Component: HexViewer },
+  ]
+  const mapViews: ViewerDef[] = [
+    { key: 'minimap', label: '小地图', Component: MapViewer },
+    { key: 'text', label: '文本', Component: IniViewer },
     { key: 'hex', label: '十六进制', Component: HexViewer },
   ]
   const viewsByExt: Record<string, ViewerDef[]> = {
@@ -163,6 +175,8 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
     mix: mixViews,
     mmx: mixViews,
     yro: mixViews,
+    map: mapViews,
+    mpr: mapViews,
     tmp: tmpViews,
     tem: tmpViews,
     sno: tmpViews,
