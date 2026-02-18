@@ -383,6 +383,23 @@ const MixEditor: React.FC = () => {
     handleBreadcrumbClick(navStack.length - 2)
   }, [navStack, handleBreadcrumbClick])
 
+  const selectedLeafName = useMemo(() => {
+    if (!selectedFile) return ''
+    const parts = selectedFile.split('/')
+    return parts[parts.length - 1] || ''
+  }, [selectedFile])
+
+  const canEnterCurrentMix = useMemo(() => {
+    if (!selectedLeafName) return false
+    const ext = selectedLeafName.split('.').pop()?.toLowerCase() || ''
+    return ext === 'mix' || ext === 'mmx' || ext === 'yro'
+  }, [selectedLeafName])
+
+  const handleEnterCurrentMix = useCallback(() => {
+    if (!canEnterCurrentMix || !selectedLeafName) return
+    void handleDrillDown(selectedLeafName)
+  }, [canEnterCurrentMix, selectedLeafName, handleDrillDown])
+
   const handleExport = useCallback(async () => {
     try {
       if (!selectedFile) return
@@ -518,6 +535,8 @@ const MixEditor: React.FC = () => {
               resourceContext={resourceContext}
               onOpenMetadataDrawer={handleOpenMetadataDrawer}
               metadataDrawerOpen={metadataDrawerOpen}
+              onEnterCurrentMix={handleEnterCurrentMix}
+              canEnterCurrentMix={canEnterCurrentMix}
             />
             <div
               className={`absolute inset-y-0 right-0 w-80 bg-gray-800 border-l border-gray-700 shadow-2xl z-20 transform transition-transform duration-200 ${

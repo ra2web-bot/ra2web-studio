@@ -27,7 +27,9 @@ const MixDirectoryViewer: React.FC<{
   selectedFile: string
   mixFiles: MixFileData[]
   resourceContext?: ResourceContext | null
-}> = ({ selectedFile, mixFiles }) => {
+  onEnterCurrentMix?: () => void
+  canEnterCurrentMix?: boolean
+}> = ({ selectedFile, mixFiles, onEnterCurrentMix, canEnterCurrentMix = false }) => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [containerName, setContainerName] = useState('')
@@ -78,7 +80,24 @@ const MixDirectoryViewer: React.FC<{
   return (
     <div className="w-full h-full flex flex-col">
       <div className="px-3 py-2 text-xs text-gray-400 border-b border-gray-700 flex items-center justify-between gap-2">
-        <span>MIX 目录（一级）</span>
+        <span>
+          此处展示解析出的MIX内部一级文件目录，可以在左侧双击MIX文件名进入MIX内部文件目录，也可
+          <button
+            type="button"
+            className={`mx-1 underline underline-offset-2 ${
+              canEnterCurrentMix ? 'text-blue-300 hover:text-blue-200' : 'text-gray-500 cursor-not-allowed'
+            }`}
+            onClick={() => {
+              if (!canEnterCurrentMix) return
+              onEnterCurrentMix?.()
+            }}
+            disabled={!canEnterCurrentMix}
+            title={canEnterCurrentMix ? '直接进入当前 MIX 内部目录' : '当前不可直接进入'}
+          >
+            点击此处
+          </button>
+          直接进入本MIX
+        </span>
         <span className="truncate text-gray-500">
           {containerName || (selectedFile.split('/').pop() || selectedFile)} · {sortedItems.length} 项
         </span>

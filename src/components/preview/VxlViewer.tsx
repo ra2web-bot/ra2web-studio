@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 // 2D frame sampling view (no WebGL)
 import { MixParser, MixFileInfo } from '../../services/MixParser'
 import { VxlFile } from '../../data/VxlFile'
+import type { Section } from '../../data/vxl/Section'
 import { PaletteParser } from '../../services/palette/PaletteParser'
 import { PaletteResolver } from '../../services/palette/PaletteResolver'
 import { loadPaletteByPath } from '../../services/palette/PaletteLoader'
@@ -21,6 +22,241 @@ function colorFromPalette(palette: Uint8Array, index: number): [number, number, 
   return [palette[i], palette[i + 1], palette[i + 2]]
 }
 
+type SectionRenderMode = 'per-section' | 'merged'
+
+type Vec3 = { x: number; y: number; z: number }
+type IndexedFrame = {
+  width: number
+  height: number
+  colorIndices: Uint8Array
+  filledMask: Uint8Array
+}
+
+const XCC_GRID_SIZE = 8
+const XCC_FRAME_COUNT = XCC_GRID_SIZE * XCC_GRID_SIZE
+
+function normalizeFrameIndex(frameIdx: number, frameCount: number): number {
+  if (frameCount <= 0) return 0
+  const idx = frameIdx % frameCount
+  return idx < 0 ? idx + frameCount : idx
+}
+
+function frameToXccAngles(frameIdx: number): { xr: number; yr: number } {
+  const normalized = normalizeFrameIndex(frameIdx, XCC_FRAME_COUNT)
+  return {
+    xr: normalized % XCC_GRID_SIZE,
+    yr: Math.floor(normalized / XCC_GRID_SIZE),
+  }
+}
+
+function rotateXLikeXcc(v: Vec3, angle: number): Vec3 {
+  const l = Math.sqrt(v.y * v.y + v.z * v.z)
+  const dA = Math.atan2(v.y, v.z) + angle
+  return {
+    x: v.x,
+    y: l * Math.sin(dA),
+    z: l * Math.cos(dA),
+  }
+}
+
+function rotateYLikeXcc(v: Vec3, angle: number): Vec3 {
+  const l = Math.sqrt(v.x * v.x + v.z * v.z)
+  const dA = Math.atan2(v.x, v.z) + angle
+  return {
+    x: l * Math.sin(dA),
+    y: v.y,
+    z: l * Math.cos(dA),
+  }
+}
+
+function resolveSectionDimensions(section: Section): { cx: number; cy: number; cz: number } {
+  let cx = section.sizeX | 0
+  let cy = section.sizeY | 0
+  let cz = section.sizeZ | 0
+  if (cx > 0 && cy > 0 && cz > 0) return { cx, cy, cz }
+
+  let maxX = -1
+  let maxY = -1
+  let maxZ = -1
+  for (const span of section.spans) {
+    if (span.x > maxX) maxX = span.x
+    if (span.y > maxY) maxY = span.y
+    for (const voxel of span.voxels) {
+      if (voxel.z > maxZ) maxZ = voxel.z
+    }
+  }
+  cx = Math.max(cx, maxX + 1, 1)
+  cy = Math.max(cy, maxY + 1, 1)
+  cz = Math.max(cz, maxZ + 1, 1)
+  return { cx, cy, cz }
+}
+
+function sampleSectionXcc(section: Section, xr: number, yr: number): IndexedFrame {
+  const { cx, cy, cz } = resolveSectionDimensions(section)
+  const l = Math.max(1, Math.ceil(Math.sqrt((cx * cx + cy * cy + cz * cz) / 4)))
+  const cl = Math.max(1, l * 2)
+  const centerX = cx / 2
+  const centerY = cy / 2
+  const centerZ = cz / 2
+  const pixels = cl * cl
+  const colorIndices = new Uint8Array(pixels)
+  const filledMask = new Uint8Array(pixels)
+  const imageZ = new Int8Array(pixels)
+  imageZ.fill(-128)
+
+  const angleX = xr * Math.PI / 4
+  const angleY = yr * Math.PI / 4
+
+  for (const span of section.spans) {
+    const sx = span.x - centerX
+    const sy = span.y - centerY
+    for (const voxel of span.voxels) {
+      const sPixel: Vec3 = {
+        x: sx,
+        y: sy,
+        z: voxel.z - centerZ,
+      }
+      const dPixel = rotateYLikeXcc(rotateXLikeXcc(sPixel, angleX), angleY)
+      const dx = dPixel.x + l
+      const dy = dPixel.y + l
+      const dz = dPixel.z + centerZ
+      const px = Math.trunc(dx)
+      const py = Math.trunc(dy)
+      if (px < 0 || py < 0 || px >= cl || py >= cl) continue
+      const idx = px + cl * py
+      if (dz > imageZ[idx]) {
+        imageZ[idx] = Math.trunc(dz)
+        colorIndices[idx] = voxel.colorIndex & 0xff
+        filledMask[idx] = 1
+      }
+    }
+  }
+
+  return {
+    width: cl,
+    height: cl,
+    colorIndices,
+    filledMask,
+  }
+}
+
+type RawVoxelSample = {
+  sx: number
+  sy: number
+  depth: number
+  colorIndex: number
+}
+
+function sampleMergedXcc(sections: Section[], xr: number, yr: number): IndexedFrame | null {
+  const samples: RawVoxelSample[] = []
+  let minX = Infinity
+  let maxX = -Infinity
+  let minY = Infinity
+  let maxY = -Infinity
+
+  const angleX = xr * Math.PI / 4
+  const angleY = yr * Math.PI / 4
+
+  for (const section of sections) {
+    const { cx, cy, cz } = resolveSectionDimensions(section)
+    const centerX = cx / 2
+    const centerY = cy / 2
+    const centerZ = cz / 2
+    for (const span of section.spans) {
+      const sx = span.x - centerX
+      const sy = span.y - centerY
+      for (const voxel of span.voxels) {
+        const sPixel: Vec3 = {
+          x: sx,
+          y: sy,
+          z: voxel.z - centerZ,
+        }
+        const dPixel = rotateYLikeXcc(rotateXLikeXcc(sPixel, angleX), angleY)
+        const px = Math.trunc(dPixel.x)
+        const py = Math.trunc(dPixel.y)
+        if (px < minX) minX = px
+        if (px > maxX) maxX = px
+        if (py < minY) minY = py
+        if (py > maxY) maxY = py
+        samples.push({
+          sx: dPixel.x,
+          sy: dPixel.y,
+          depth: dPixel.z + centerZ,
+          colorIndex: voxel.colorIndex & 0xff,
+        })
+      }
+    }
+  }
+
+  if (!samples.length || !isFinite(minX) || !isFinite(minY)) return null
+
+  const width = Math.max(1, maxX - minX + 1)
+  const height = Math.max(1, maxY - minY + 1)
+  const pixels = width * height
+  const colorIndices = new Uint8Array(pixels)
+  const filledMask = new Uint8Array(pixels)
+  const depthBuf = new Float32Array(pixels)
+  depthBuf.fill(-Infinity)
+
+  for (const sample of samples) {
+    const px = Math.trunc(sample.sx) - minX
+    const py = Math.trunc(sample.sy) - minY
+    if (px < 0 || py < 0 || px >= width || py >= height) continue
+    const idx = px + width * py
+    if (sample.depth > depthBuf[idx]) {
+      depthBuf[idx] = sample.depth
+      colorIndices[idx] = sample.colorIndex
+      filledMask[idx] = 1
+    }
+  }
+
+  return {
+    width,
+    height,
+    colorIndices,
+    filledMask,
+  }
+}
+
+function indexedFrameToCanvas(frame: IndexedFrame, palette: Uint8Array, opaqueBackground: boolean): HTMLCanvasElement {
+  const canvas = document.createElement('canvas')
+  canvas.width = frame.width
+  canvas.height = frame.height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return canvas
+  ctx.imageSmoothingEnabled = false
+  const image = ctx.createImageData(frame.width, frame.height)
+  const data = image.data
+  const total = frame.width * frame.height
+
+  for (let i = 0; i < total; i++) {
+    if (!opaqueBackground && frame.filledMask[i] === 0) continue
+    const colorIndex = frame.colorIndices[i]
+    const [r, g, b] = colorFromPalette(palette, colorIndex)
+    const o = i * 4
+    data[o] = r
+    data[o + 1] = g
+    data[o + 2] = b
+    data[o + 3] = 255
+  }
+
+  ctx.putImageData(image, 0, 0)
+  return canvas
+}
+
+function applyDisplayScale(canvas: HTMLCanvasElement, targetWidth: number, targetHeight: number, maxScale = 8): void {
+  const scale = Math.max(
+    1,
+    Math.min(
+      maxScale,
+      Math.floor(Math.min(targetWidth / Math.max(1, canvas.width), targetHeight / Math.max(1, canvas.height))),
+    ),
+  )
+  canvas.style.width = `${canvas.width * scale}px`
+  canvas.style.height = `${canvas.height * scale}px`
+  canvas.style.imageRendering = 'pixelated'
+}
+
 const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resourceContext?: ResourceContext | null }> = ({
   selectedFile,
   mixFiles,
@@ -30,8 +266,8 @@ const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const [frames, setFrames] = useState<number>(16)
   const [frameIndex, setFrameIndex] = useState<number>(0)
+  const [sectionRenderMode, setSectionRenderMode] = useState<SectionRenderMode>('per-section')
   const [palettePath, setPalettePath] = useState<string>('')
   const [paletteList, setPaletteList] = useState<string[]>([])
   const [paletteInfo, setPaletteInfo] = useState<PaletteSelectionInfo>({
@@ -40,92 +276,88 @@ const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
     resolvedPath: null,
   })
 
-  function render2DFrame(mount: HTMLDivElement, vxl: VxlFile, palette: Uint8Array, frameIdx: number, frameCount: number) {
-    // 清除之前的内容
+  function render2DFrame(
+    mount: HTMLDivElement,
+    vxl: VxlFile,
+    palette: Uint8Array,
+    frameIdx: number,
+    renderMode: SectionRenderMode,
+  ): void {
     mount.innerHTML = ''
+    const pad = 8
+    const targetW = Math.max(64, mount.clientWidth - pad * 2)
+    const targetH = Math.max(64, mount.clientHeight - pad * 2)
+    const { xr, yr } = frameToXccAngles(frameIdx)
 
-    const theta = (frameIdx / Math.max(1, frameCount)) * Math.PI * 2
-    const cosT = Math.cos(theta)
-    const sinT = Math.sin(theta)
-
-    // 先对每个 (x,y) 列选取最“靠前”的体素作为表面点
-    type Sample = { sx: number; sy: number; depth: number; color: [number, number, number] }
-    const surface: Sample[] = []
-    let minSX = Infinity, maxSX = -Infinity, minSY = Infinity, maxSY = -Infinity
-    for (const section of vxl.sections) {
-      for (const span of section.spans) {
-        let best: Sample | null = null
-        for (const v of span.voxels) {
-          const wx = v.x
-          const wy = v.z
-          const wz = v.y
-          const rx = wx * cosT - wz * sinT
-          const rz = wx * sinT + wz * cosT
-          const sx = rx
-          const sy = wy - rz * 0.5
-          const depth = -rz
-          if (!best || depth > best.depth) {
-            best = { sx, sy, depth, color: colorFromPalette(palette, v.colorIndex) }
-          }
-        }
-        if (best) {
-          surface.push(best)
-          if (best.sx < minSX) minSX = best.sx; if (best.sx > maxSX) maxSX = best.sx
-          if (best.sy < minSY) minSY = best.sy; if (best.sy > maxSY) maxSY = best.sy
-        }
+    if (renderMode === 'merged') {
+      const frame = sampleMergedXcc(vxl.sections, xr, yr)
+      if (!frame) {
+        mount.innerHTML = '<div class="p-2 text-xs text-gray-400">空 VXL</div>'
+        return
       }
+      const canvas = indexedFrameToCanvas(frame, palette, false)
+      applyDisplayScale(canvas, targetW, targetH)
+      mount.appendChild(canvas)
+      return
     }
-    if (!isFinite(minSX) || !isFinite(minSY)) {
+
+    if (!vxl.sections.length) {
       mount.innerHTML = '<div class="p-2 text-xs text-gray-400">空 VXL</div>'
       return
     }
 
-    const pad = 8
-    const targetW = Math.max(64, mount.clientWidth - pad * 2)
-    const targetH = Math.max(64, mount.clientHeight - pad * 2)
-    const spanX = Math.max(1, maxSX - minSX + 1)
-    const spanY = Math.max(1, maxSY - minSY + 1)
-    const scale = Math.max(1, Math.floor(Math.min(targetW / spanX, targetH / spanY)))
-    const w = Math.max(1, Math.floor(spanX * scale))
-    const h = Math.max(1, Math.floor(spanY * scale))
-    const patch = Math.max(1, Math.round(scale))
+    const wrapper = document.createElement('div')
+    wrapper.style.width = '100%'
+    wrapper.style.height = '100%'
+    wrapper.style.overflow = 'auto'
+    wrapper.style.display = 'flex'
+    wrapper.style.alignItems = 'flex-start'
+    wrapper.style.justifyContent = 'center'
 
-    const canvas = document.createElement('canvas')
-    canvas.width = w
-    canvas.height = h
-    const ctx = canvas.getContext('2d')!
-    ctx.imageSmoothingEnabled = false
-    const img = ctx.createImageData(w, h)
-    const buf = img.data
-    const depthBuf = new Float32Array(w * h)
-    depthBuf.fill(-Infinity)
+    const grid = document.createElement('div')
+    grid.style.display = 'flex'
+    grid.style.flexWrap = 'wrap'
+    grid.style.alignItems = 'flex-start'
+    grid.style.justifyContent = 'center'
+    grid.style.gap = '10px'
+    grid.style.padding = '8px'
 
-    for (const s of surface) {
-      const baseX = Math.floor((s.sx - minSX) * scale)
-      const baseY = Math.floor((s.sy - minSY) * scale)
-      for (let dy = 0; dy < patch; dy++) {
-        const py = baseY + dy
-        if (py < 0 || py >= h) continue
-        let rowIdx = py * w
-        for (let dx = 0; dx < patch; dx++) {
-          const px = baseX + dx
-          if (px < 0 || px >= w) continue
-          const idx = rowIdx + px
-          if (s.depth > depthBuf[idx]) {
-            depthBuf[idx] = s.depth
-            const o = idx * 4
-            buf[o] = s.color[0]
-            buf[o + 1] = s.color[1]
-            buf[o + 2] = s.color[2]
-            buf[o + 3] = 255
-          }
-        }
-      }
+    const columns = Math.max(1, Math.ceil(Math.sqrt(vxl.sections.length)))
+    const rows = Math.max(1, Math.ceil(vxl.sections.length / columns))
+    const cellW = Math.max(72, Math.floor((targetW - Math.max(0, columns - 1) * 10) / columns))
+    const cellH = Math.max(72, Math.floor((targetH - Math.max(0, rows - 1) * 10) / rows))
+
+    for (const section of vxl.sections) {
+      const frame = sampleSectionXcc(section, xr, yr)
+      const card = document.createElement('div')
+      card.style.width = `${cellW}px`
+      card.style.display = 'flex'
+      card.style.flexDirection = 'column'
+      card.style.alignItems = 'center'
+      card.style.gap = '4px'
+
+      const label = document.createElement('div')
+      const sectionName = section.name?.trim() || '(unnamed)'
+      label.textContent = sectionName
+      label.title = sectionName
+      label.style.maxWidth = '100%'
+      label.style.fontSize = '10px'
+      label.style.lineHeight = '12px'
+      label.style.color = '#9ca3af'
+      label.style.whiteSpace = 'nowrap'
+      label.style.overflow = 'hidden'
+      label.style.textOverflow = 'ellipsis'
+
+      const canvas = indexedFrameToCanvas(frame, palette, false)
+      applyDisplayScale(canvas, cellW, Math.max(48, cellH - 16))
+
+      card.appendChild(label)
+      card.appendChild(canvas)
+      grid.appendChild(card)
     }
 
-    ctx.putImageData(img, 0, 0)
-    mount.innerHTML = ''
-    mount.appendChild(canvas)
+    wrapper.appendChild(grid)
+    mount.appendChild(wrapper)
   }
 
   // 重置帧索引为0，当切换文件时
@@ -135,6 +367,10 @@ const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
       setFrameIndex(0)
     }
   }, [selectedFile])
+
+  useEffect(() => {
+    setFrameIndex(prev => normalizeFrameIndex(prev, XCC_FRAME_COUNT))
+  }, [])
 
   // 存储VXL和调色板数据，用于帧变化时重新渲染
   const [vxlData, setVxlData] = useState<{ vxl: VxlFile, palette: Uint8Array } | null>(null)
@@ -221,35 +457,40 @@ const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
     if (!mount) return
 
     const { vxl, palette } = vxlData
-    console.log(`[VxlViewer] Rendering frame ${frameIndex}/${frames - 1}`)
-    render2DFrame(mount, vxl, palette, frameIndex % Math.max(1, frames), frames)
-  }, [frameIndex, frames, vxlData])
+    const normalized = normalizeFrameIndex(frameIndex, XCC_FRAME_COUNT)
+    console.log(`[VxlViewer] Rendering frame ${normalized}/${XCC_FRAME_COUNT - 1}`)
+    render2DFrame(mount, vxl, palette, normalized, sectionRenderMode)
+  }, [frameIndex, vxlData, sectionRenderMode])
 
   const paletteOptions = useMemo(
     () => [{ value: '', label: '自动(规则/内嵌)' }, ...paletteList.map((p) => ({ value: p, label: p.split('/').pop() || p }))],
     [paletteList],
   )
+  const normalizedFrame = normalizeFrameIndex(frameIndex, XCC_FRAME_COUNT)
+  const xccAngles = frameToXccAngles(normalizedFrame)
   usePaletteHotkeys(paletteOptions, palettePath, setPalettePath, true)
 
   return (
     <div className="w-full h-full flex flex-col">
-      <div className="px-3 py-2 text-xs text-gray-400 border-b border-gray-700 flex items-center gap-3">
+      <div className="px-3 py-2 text-xs text-gray-400 border-b border-gray-700 flex items-center gap-3 flex-wrap">
         <span>VXL 预览（2D帧采样）</span>
         <label className="flex items-center gap-1">
-          <span>方向数</span>
-          <select className="bg-gray-800 border border-gray-700 rounded px-1 py-0.5 text-xs" value={frames} onChange={e => setFrames(Math.max(1, parseInt(e.target.value || '16') || 16))}>
-            <option value={8}>8</option>
-            <option value={12}>12</option>
-            <option value={16}>16</option>
-            <option value={24}>24</option>
-            <option value={32}>32</option>
+          <span>Section</span>
+          <select
+            className="bg-gray-800 border border-gray-700 rounded px-1 py-0.5 text-xs"
+            value={sectionRenderMode}
+            onChange={e => setSectionRenderMode((e.target.value as SectionRenderMode) || 'per-section')}
+          >
+            <option value="per-section">逐 section</option>
+            <option value="merged">合并</option>
           </select>
         </label>
-        <label className="flex items-center gap-1 flex-1">
-          <span>角度</span>
-          <input className="flex-1" type="range" min={0} max={Math.max(1, frames) - 1} value={frameIndex % Math.max(1, frames)} onChange={e => setFrameIndex(parseInt(e.target.value || '0') || 0)} />
-          <span className="w-6 text-right">{(frameIndex % Math.max(1, frames))}</span>
+        <label className="flex items-center gap-1">
+          <span>视角索引</span>
+          <input className="w-40" type="range" min={0} max={XCC_FRAME_COUNT - 1} value={normalizedFrame} onChange={e => setFrameIndex(parseInt(e.target.value || '0', 10) || 0)} />
+          <span className="w-14 text-right">{normalizedFrame}</span>
         </label>
+        <span className="text-gray-500">xr={xccAngles.xr}, yr={xccAngles.yr}</span>
         <label className="flex items-center gap-1">
           <span>调色板</span>
           <SearchableSelect
@@ -264,7 +505,7 @@ const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
             menuClassName="absolute z-50 mt-1 w-[260px] max-w-[70vw] rounded border border-gray-700 bg-gray-800 shadow-xl"
           />
         </label>
-        <span className="text-gray-500 truncate max-w-[280px]">
+        <span className="text-gray-500 truncate max-w-[300px]">
           {paletteInfo.source} - {paletteInfo.reason}
         </span>
       </div>

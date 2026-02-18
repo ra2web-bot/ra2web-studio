@@ -25,6 +25,8 @@ interface PreviewPanelProps {
   resourceContext?: ResourceContext | null
   onOpenMetadataDrawer?: () => void
   metadataDrawerOpen?: boolean
+  onEnterCurrentMix?: () => void
+  canEnterCurrentMix?: boolean
 }
 
 const PreviewPanel: React.FC<PreviewPanelProps> = ({
@@ -35,6 +37,8 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
   resourceContext,
   onOpenMetadataDrawer,
   metadataDrawerOpen = false,
+  onEnterCurrentMix,
+  canEnterCurrentMix = false,
 }) => {
   const getFileTypeIcon = (filePath: string) => {
     const extension = filePath.split('.').pop()?.toLowerCase()
@@ -250,7 +254,22 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
         <div className="bg-gray-800 h-full w-full overflow-hidden">
           {(() => {
             const Viewer = available.find(v => v.key === activeView)?.Component ?? available[0].Component
-            return selectedFile ? <Viewer selectedFile={selectedFile} mixFiles={mixFiles} resourceContext={resourceContext} /> : null
+            if (!selectedFile) return null
+            if (
+              (ext === 'mix' || ext === 'mmx' || ext === 'yro')
+              && activeView === 'directory'
+            ) {
+              return (
+                <MixDirectoryViewer
+                  selectedFile={selectedFile}
+                  mixFiles={mixFiles}
+                  resourceContext={resourceContext}
+                  onEnterCurrentMix={onEnterCurrentMix}
+                  canEnterCurrentMix={canEnterCurrentMix}
+                />
+              )
+            }
+            return <Viewer selectedFile={selectedFile} mixFiles={mixFiles} resourceContext={resourceContext} />
           })()}
         </div>
       </div>

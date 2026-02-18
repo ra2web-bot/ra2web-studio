@@ -59,23 +59,10 @@ const FileTree: React.FC<FileTreeProps> = ({
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
   }
 
-  // 获取文件类型名称
+  // 类型列仅显示后缀（小写）
   const getFileTypeName = (extension: string): string => {
-    const typeMap: { [key: string]: string } = {
-      'xif': 'xif',
-      'mix': 'mix',
-      'shp': 'shp',
-      'tmp': 'tmp(ts)',
-      'vxl': 'vxl',
-      'pal': 'pal',
-      'wav': 'wav',
-      'ini': 'ini',
-      'txt': 'txt',
-      'pcx': 'pcx',
-      'csf': 'csf',
-      'dat': 'dat'
-    }
-    return typeMap[extension.toLowerCase()] || extension.toUpperCase() + '文件'
+    const ext = (extension || '').trim().toLowerCase()
+    return ext || '-'
   }
 
   const toFileItem = (mixName: string, file: any, prefix?: string): FileItem => ({
