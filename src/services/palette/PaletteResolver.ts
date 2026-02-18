@@ -69,6 +69,8 @@ const RAW_XCC_PALETTE_RULES: XccPaletteRule[] = [
   { assetKind: 'shp', palette: 'desert.pal', filenamePattern: '*.des' },
   { assetKind: 'shp', palette: 'temperat.pal', filenamePattern: '*.tem' },
   { assetKind: 'shp', palette: 'winter.pal', filenamePattern: '*.win' },
+  { assetKind: 'shp', palette: 'cameo.pal', filenamePattern: '*ico.shp' },
+  { assetKind: 'shp', palette: 'cameo.pal', filenamePattern: '*icon.shp' },
   // TS
   { assetKind: 'shp', palette: 'cameo.pal', filenamePattern: '*icon*', width: 64, height: 48 },
   { assetKind: 'shp', palette: 'dropship.pal', filenamePattern: 'drop000?*' },
@@ -189,12 +191,19 @@ function isTmpLikeFilename(lowerFilename: string): boolean {
   )
 }
 
+function isShpIcoLikeFilename(pathLike: string): boolean {
+  const base = getBaseFilename(pathLike).toLowerCase()
+  const dot = base.lastIndexOf('.')
+  const stem = dot > 0 ? base.substring(0, dot) : base
+  return stem.endsWith('ico') || stem.endsWith('icon')
+}
+
 function getCandidateNames(assetKind: PaletteAssetKind, innerFilename: string): string[] {
   const lower = innerFilename.toLowerCase()
   const suffix = inferTheaterSuffix(innerFilename)
   const result: string[] = []
 
-  if (lower.includes('icon') || lower.includes('cameo')) {
+  if (lower.includes('icon') || lower.includes('cameo') || (assetKind === 'shp' && isShpIcoLikeFilename(innerFilename))) {
     result.push('cameo.pal')
   }
 

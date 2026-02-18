@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react'
-import { Image, Box, FileText, Music, Info } from 'lucide-react'
+import { Image, Box, FileText, Music, Info, Archive } from 'lucide-react'
 import { MixFileInfo } from '../services/MixParser'
 import IniViewer from './preview/IniViewer'
 import DatViewer from './preview/DatViewer'
@@ -12,6 +12,7 @@ import TmpViewer from './preview/TmpViewer'
 import VxlViewer from './preview/VxlViewer'
 import VxlViewer3D from './preview/VxlViewer3D.tsx'
 import HvaViewer from './preview/HvaViewer'
+import MixDirectoryViewer from './preview/MixDirectoryViewer'
 import type { ResourceContext } from '../services/gameRes/ResourceContext'
 
 type MixFileData = { file: File; info: MixFileInfo }
@@ -57,6 +58,10 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
         return <Image size={48} className="text-orange-400" />
       case 'wav':
         return <Music size={48} className="text-yellow-400" />
+      case 'mix':
+      case 'mmx':
+      case 'yro':
+        return <Archive size={48} className="text-cyan-400" />
       default:
         return <FileText size={48} className="text-gray-400" />
     }
@@ -88,6 +93,10 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
         return 'TMP 地图图块文件'
       case 'wav':
         return 'WAV 音频文件'
+      case 'mix':
+      case 'mmx':
+      case 'yro':
+        return '王二火大归档文件'
       default:
         return '未知文件类型'
     }
@@ -102,6 +111,10 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
   }
   const tmpViews: ViewerDef[] = [
     { key: 'image', label: '图像', Component: TmpViewer },
+    { key: 'hex', label: '十六进制', Component: HexViewer },
+  ]
+  const mixViews: ViewerDef[] = [
+    { key: 'directory', label: '目录', Component: MixDirectoryViewer },
     { key: 'hex', label: '十六进制', Component: HexViewer },
   ]
   const viewsByExt: Record<string, ViewerDef[]> = {
@@ -138,6 +151,9 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
       { key: 'viewer', label: '3D', Component: HvaViewer },
       { key: 'hex', label: '十六进制', Component: HexViewer },
     ],
+    mix: mixViews,
+    mmx: mixViews,
+    yro: mixViews,
     tmp: tmpViews,
     tem: tmpViews,
     sno: tmpViews,

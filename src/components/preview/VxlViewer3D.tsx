@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { MixParser, MixFileInfo } from '../../services/MixParser'
 import { VxlFile } from '../../data/VxlFile'
+import { HvaFile } from '../../data/HvaFile'
 import { PaletteParser } from '../../services/palette/PaletteParser'
 import { PaletteResolver } from '../../services/palette/PaletteResolver'
 import { loadPaletteByPath } from '../../services/palette/PaletteLoader'
@@ -12,6 +13,13 @@ import type { PaletteSelectionInfo, Rgb } from '../../services/palette/PaletteTy
 import type { ResourceContext } from '../../services/gameRes/ResourceContext'
 
 type MixFileData = { file: File; info: MixFileInfo }
+type HvaSelectionInfo = {
+  source: 'auto' | 'manual' | 'none'
+  reason: string
+  resolvedPath: string | null
+}
+
+const HVA_AUTO_VALUE = ''
 
 function toBytePalette(palette: Rgb[]): Uint8Array {
   return PaletteParser.toBytePalette(PaletteParser.ensurePalette256(palette))
@@ -25,12 +33,90 @@ function colorFromPalette(palette: Uint8Array, index: number): THREE.Color {
   return new THREE.Color(r, g, b)
 }
 
+function splitMixPath(fullPath: string): { mixName: string; innerPath: string } | null {
+  const slash = fullPath.indexOf('/')
+  if (slash <= 0) return null
+  return {
+    mixName: fullPath.substring(0, slash),
+    innerPath: fullPath.substring(slash + 1),
+  }
+}
+
+function replaceExtension(path: string, extensionWithoutDot: string): string {
+  const slash = path.lastIndexOf('/')
+  const dot = path.lastIndexOf('.')
+  if (dot <= slash) return `${path}.${extensionWithoutDot}`
+  return `${path.substring(0, dot)}.${extensionWithoutDot}`
+}
+
+function normalizeSectionKey(name: string): string {
+  return name.trim().toLowerCase()
+}
+
+function buildHvaOptionPaths(
+  mixFiles: MixFileData[],
+  resourceContext: ResourceContext | null | undefined,
+  autoHvaPath: string | null,
+): string[] {
+  const result: string[] = []
+  const seen = new Set<string>()
+  const add = (path: string | null | undefined) => {
+    if (!path) return
+    const trimmed = path.trim()
+    if (!trimmed) return
+    const key = trimmed.toLowerCase()
+    if (seen.has(key)) return
+    seen.add(key)
+    result.push(trimmed)
+  }
+
+  add(autoHvaPath)
+
+  for (const mix of mixFiles) {
+    for (const entry of mix.info.files) {
+      if ((entry.extension || '').toLowerCase() !== 'hva') continue
+      add(`${mix.info.name}/${entry.filename}`)
+    }
+  }
+
+  if (resourceContext) {
+    for (const archive of resourceContext.archives) {
+      for (const entry of archive.info.files) {
+        if ((entry.extension || '').toLowerCase() !== 'hva') continue
+        add(`${archive.info.name}/${entry.filename}`)
+      }
+    }
+  }
+
+  return result
+}
+
+async function loadHvaByPath(path: string, mixFiles: MixFileData[]): Promise<HvaFile | null> {
+  const resolved = splitMixPath(path)
+  if (!resolved) return null
+  const mix = mixFiles.find((m) => m.info.name === resolved.mixName)
+  if (!mix) return null
+  const vf = await MixParser.extractFile(mix.file, resolved.innerPath)
+  if (!vf) return null
+  try {
+    vf.stream.seek(0)
+  } catch {
+    // Ignore stream seek failure and still try to parse.
+  }
+  const hva = new HvaFile(vf)
+  if (hva.sections.length === 0) return null
+  const frameCount = hva.sections.reduce((max, section) => Math.max(max, section.matrices.length), 0)
+  if (frameCount <= 0) return null
+  return hva
+}
+
 const VxlViewer3D: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resourceContext?: ResourceContext | null }> = ({
   selectedFile,
   mixFiles,
   resourceContext,
 }) => {
   const mountRef = useRef<HTMLDivElement>(null)
+  const applyHvaFrameRef = useRef<(frame: number) => void>(() => {})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [palettePath, setPalettePath] = useState<string>('')
@@ -40,6 +126,29 @@ const VxlViewer3D: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; res
     reason: '未加载',
     resolvedPath: null,
   })
+  const [hvaPath, setHvaPath] = useState<string>(HVA_AUTO_VALUE)
+  const [hvaOptions, setHvaOptions] = useState<string[]>([])
+  const [hvaFrame, setHvaFrame] = useState<number>(0)
+  const [hvaMaxFrame, setHvaMaxFrame] = useState<number>(0)
+  const [hvaSourceInfo, setHvaSourceInfo] = useState<HvaSelectionInfo>({
+    source: 'none',
+    reason: '未加载',
+    resolvedPath: null,
+  })
+
+  useEffect(() => {
+    setHvaPath(HVA_AUTO_VALUE)
+    setHvaFrame(0)
+  }, [selectedFile])
+
+  useEffect(() => {
+    const clamped = Math.max(0, Math.min(hvaMaxFrame, hvaFrame | 0))
+    if (clamped !== hvaFrame) {
+      setHvaFrame(clamped)
+      return
+    }
+    applyHvaFrameRef.current(clamped)
+  }, [hvaFrame, hvaMaxFrame])
 
   useEffect(() => {
     let renderer: THREE.WebGLRenderer | null = null
@@ -47,15 +156,18 @@ const VxlViewer3D: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; res
     let camera: THREE.PerspectiveCamera | null = null
     let controls: OrbitControls | null = null
     let animationId = 0
+    let onResize: (() => void) | null = null
+    let disposed = false
+
+    applyHvaFrameRef.current = () => {}
 
     async function load() {
       setLoading(true)
       setError(null)
       try {
-        const slash = selectedFile.indexOf('/')
-        if (slash <= 0) throw new Error('Invalid path')
-        const mixName = selectedFile.substring(0, slash)
-        const inner = selectedFile.substring(slash + 1)
+        const splitPath = splitMixPath(selectedFile)
+        if (!splitPath) throw new Error('Invalid path')
+        const { mixName, innerPath: inner } = splitPath
         const mix = mixFiles.find(m => m.info.name === mixName)
         if (!mix) throw new Error('MIX not found')
         const vf = await MixParser.extractFile(mix.file, inner)
@@ -103,6 +215,55 @@ const VxlViewer3D: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; res
         setPaletteInfo(selectedInfo)
         const pal = toBytePalette(finalPalette)
 
+        const autoHvaPath = replaceExtension(selectedFile, 'hva')
+        const hvaCandidatePaths = buildHvaOptionPaths(mixFiles, resourceContext, autoHvaPath)
+        if (!disposed) setHvaOptions(hvaCandidatePaths)
+        const targetHvaPath = hvaPath || autoHvaPath
+        let loadedHva: HvaFile | null = null
+        let loadedHvaFrameCount = 0
+        let nextHvaInfo: HvaSelectionInfo = {
+          source: 'none',
+          reason: '未匹配到 HVA，使用默认姿态',
+          resolvedPath: targetHvaPath || null,
+        }
+        if (targetHvaPath) {
+          loadedHva = await loadHvaByPath(targetHvaPath, mixFiles)
+          if (loadedHva) {
+            loadedHvaFrameCount = loadedHva.sections.reduce(
+              (max, section) => Math.max(max, section.matrices.length),
+              0,
+            )
+            if (loadedHvaFrameCount > 0) {
+              nextHvaInfo = {
+                source: hvaPath ? 'manual' : 'auto',
+                reason: hvaPath ? '手动 HVA 已加载' : '同名 HVA 自动匹配成功',
+                resolvedPath: targetHvaPath,
+              }
+            } else {
+              loadedHva = null
+              nextHvaInfo = {
+                source: 'none',
+                reason: 'HVA 无有效帧，使用默认姿态',
+                resolvedPath: targetHvaPath,
+              }
+            }
+          } else {
+            nextHvaInfo = {
+              source: 'none',
+              reason: hvaPath
+                ? `手动 HVA 加载失败（${targetHvaPath}），使用默认姿态`
+                : '未匹配到同名 HVA，使用默认姿态',
+              resolvedPath: targetHvaPath,
+            }
+          }
+        }
+        if (!disposed) {
+          const nextMaxFrame = Math.max(0, loadedHvaFrameCount - 1)
+          setHvaSourceInfo(nextHvaInfo)
+          setHvaMaxFrame(nextMaxFrame)
+          setHvaFrame((prev) => Math.max(0, Math.min(prev, nextMaxFrame)))
+        }
+
         // 构建体素网格（低开销：实例化网格）
         const mount = mountRef.current
         if (!mount) throw new Error('Mount not ready')
@@ -149,10 +310,20 @@ const VxlViewer3D: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; res
         // 构建单个彩色立方体的几何（用 per-instance color 需要扩展，这里简单复制不同色）
         // 为了性能，这里按 section 分批构建合并网格
         // 将几何加入独立分组，便于计算包围盒与相机对齐
+        const centerRoot = new THREE.Group()
         const root = new THREE.Group()
-        scene.add(root)
+        centerRoot.add(root)
+        scene.add(centerRoot)
+        const sectionGroupMap = new Map<string, THREE.Group>()
 
         for (const section of vxl.sections) {
+          const sectionGroup = new THREE.Group()
+          sectionGroup.name = section.name
+          sectionGroup.matrixAutoUpdate = false
+          sectionGroup.matrix.identity()
+          root.add(sectionGroup)
+          sectionGroupMap.set(normalizeSectionKey(section.name), sectionGroup)
+
           const { voxels } = section.getAllVoxels()
           if (voxels.length === 0) continue
           const inst = new THREE.InstancedMesh(boxGeo, mat, voxels.length)
@@ -170,32 +341,62 @@ const VxlViewer3D: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; res
           inst.instanceMatrix.needsUpdate = true
           // @ts-ignore THREE r150+
           if (inst.instanceColor) inst.instanceColor.needsUpdate = true
-          root.add(inst)
+          sectionGroup.add(inst)
         }
 
-        // 居中并自动适配相机距离
-        const box3 = new THREE.Box3().setFromObject(root)
-        const center = new THREE.Vector3()
-        box3.getCenter(center)
-        root.position.sub(center)
+        const recenterRoot = () => {
+          centerRoot.position.set(0, 0, 0)
+          centerRoot.updateMatrixWorld(true)
+          const box = new THREE.Box3().setFromObject(root)
+          if (box.isEmpty()) return
+          const center = new THREE.Vector3()
+          box.getCenter(center)
+          centerRoot.position.copy(center).multiplyScalar(-1)
+          centerRoot.updateMatrixWorld(true)
+        }
 
+        const applyHvaFrame = (rawFrame: number) => {
+          for (const group of sectionGroupMap.values()) {
+            group.matrix.identity()
+            group.matrixAutoUpdate = false
+            group.matrixWorldNeedsUpdate = true
+          }
+          if (loadedHva && loadedHvaFrameCount > 0) {
+            const frame = Math.max(0, Math.min(rawFrame, loadedHvaFrameCount - 1))
+            for (const hvaSection of loadedHva.sections) {
+              const matrix = hvaSection.getMatrix(frame)
+              if (!matrix) continue
+              const targetGroup = sectionGroupMap.get(normalizeSectionKey(hvaSection.name))
+              if (!targetGroup) continue
+              targetGroup.matrix.copy(matrix)
+              targetGroup.matrixAutoUpdate = false
+              targetGroup.matrixWorldNeedsUpdate = true
+            }
+          }
+          recenterRoot()
+        }
+        applyHvaFrameRef.current = applyHvaFrame
+        applyHvaFrame(hvaFrame)
+
+        // 自动适配相机距离
+        const box3 = new THREE.Box3().setFromObject(root)
         const size = new THREE.Vector3()
-        box3.getSize(size)
-        const radius = Math.max(1, size.length() * 0.6)
+        if (!box3.isEmpty()) box3.getSize(size)
+        const radius = Math.max(10, size.length() * 0.6)
         const dir = new THREE.Vector3(1, 1, 1).normalize()
         camera.position.copy(dir.multiplyScalar(radius * 1.6))
         camera.lookAt(0, 0, 0)
 
         // Debug: 辅助观察包围盒
         if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug') === '1') {
-          const helper = new THREE.Box3Helper(box3, 0x00ff00)
+          const helper = new THREE.Box3Helper(new THREE.Box3().setFromObject(root), 0x00ff00)
           scene.add(helper)
         }
 
         controls = new OrbitControls(camera, renderer.domElement)
         controls.enableDamping = true
 
-        const onResize = () => {
+        onResize = () => {
           if (!renderer || !camera || !mount) return
           const w = mount.clientWidth, h = mount.clientHeight
           renderer.setSize(w, h)
@@ -211,34 +412,55 @@ const VxlViewer3D: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; res
         }
         loop()
       } catch (e: any) {
-        setError(e?.message || 'Failed to render VXL 3D')
+        if (!disposed) setError(e?.message || 'Failed to render VXL 3D')
       } finally {
-        setLoading(false)
+        if (!disposed) setLoading(false)
       }
     }
     load()
 
     return () => {
+      disposed = true
       cancelAnimationFrame(animationId)
+      if (onResize) window.removeEventListener('resize', onResize)
       controls?.dispose()
       renderer?.dispose()
       if (renderer?.domElement?.parentElement) renderer.domElement.parentElement.removeChild(renderer.domElement)
+      applyHvaFrameRef.current = () => {}
       scene = null
       camera = null
       renderer = null
       controls = null
     }
-  }, [selectedFile, mixFiles, palettePath, resourceContext])
+  }, [selectedFile, mixFiles, palettePath, resourceContext, hvaPath])
 
   const paletteOptions = useMemo(
     () => [{ value: '', label: '自动(规则/内嵌)' }, ...paletteList.map((p) => ({ value: p, label: p.split('/').pop() || p }))],
     [paletteList],
   )
+  const hvaSelectOptions = useMemo(
+    () => [
+      { value: HVA_AUTO_VALUE, label: '自动(同名匹配)', searchText: 'auto hva' },
+      ...hvaOptions.map((path) => ({
+        value: path,
+        label: path.split('/').pop() || path,
+        searchText: path,
+      })),
+    ],
+    [hvaOptions],
+  )
+  const hvaSourceLabel = useMemo(() => {
+    if (hvaSourceInfo.source === 'auto') return '自动'
+    if (hvaSourceInfo.source === 'manual') return '手动'
+    return '未匹配'
+  }, [hvaSourceInfo.source])
+  const hvaFrameEnabled = hvaSourceInfo.source !== 'none'
+
   usePaletteHotkeys(paletteOptions, palettePath, setPalettePath, true)
 
   return (
     <div className="w-full h-full flex flex-col">
-      <div className="px-3 py-2 text-xs text-gray-400 border-b border-gray-700 flex items-center gap-2">
+      <div className="px-3 py-2 text-xs text-gray-400 border-b border-gray-700 flex items-center gap-2 flex-wrap">
         <span>VXL 预览（3D体素）</span>
         <label className="flex items-center gap-1">
           <span>调色板</span>
@@ -254,7 +476,55 @@ const VxlViewer3D: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; res
             menuClassName="absolute z-50 mt-1 w-[260px] max-w-[70vw] rounded border border-gray-700 bg-gray-800 shadow-xl"
           />
         </label>
-        <span className="text-gray-500 truncate">{paletteInfo.source} - {paletteInfo.reason}</span>
+        <span className="text-gray-500 truncate max-w-[320px]">{paletteInfo.source} - {paletteInfo.reason}</span>
+        <label className="flex items-center gap-1">
+          <span>HVA</span>
+          <SearchableSelect
+            value={hvaPath}
+            options={hvaSelectOptions}
+            onChange={(next) => {
+              setHvaPath(next || HVA_AUTO_VALUE)
+              setHvaFrame(0)
+            }}
+            closeOnSelect={false}
+            pinnedValues={[HVA_AUTO_VALUE]}
+            searchPlaceholder="搜索 HVA..."
+            noResultsText="未找到匹配 HVA"
+            triggerClassName="min-w-[180px] max-w-[280px] bg-gray-800 border border-gray-700 rounded px-1 py-0.5 text-xs text-left flex items-center gap-2"
+            menuClassName="absolute z-50 mt-1 w-[280px] max-w-[70vw] rounded border border-gray-700 bg-gray-800 shadow-xl"
+          />
+        </label>
+        <label className="flex items-center gap-1">
+          <span>帧</span>
+          <input
+            type="number"
+            className="w-16 bg-gray-800 border border-gray-700 rounded px-1 py-0.5 disabled:opacity-40"
+            min={0}
+            max={hvaMaxFrame}
+            disabled={!hvaFrameEnabled}
+            value={hvaFrame}
+            onChange={(e) => {
+              const next = parseInt(e.target.value || '0', 10) | 0
+              setHvaFrame(Math.max(0, Math.min(hvaMaxFrame, next)))
+            }}
+          />
+          <span>/ {hvaMaxFrame}</span>
+        </label>
+        <input
+          type="range"
+          min={0}
+          max={Math.max(0, hvaMaxFrame)}
+          disabled={!hvaFrameEnabled}
+          className="w-28 disabled:opacity-40"
+          value={Math.max(0, Math.min(hvaMaxFrame, hvaFrame))}
+          onChange={(e) => {
+            const next = parseInt(e.target.value || '0', 10) | 0
+            setHvaFrame(Math.max(0, Math.min(hvaMaxFrame, next)))
+          }}
+        />
+        <span className="text-gray-500 truncate max-w-[360px]">
+          HVA({hvaSourceLabel}) - {hvaSourceInfo.reason}
+        </span>
       </div>
       <div ref={mountRef} className="flex-1" />
       {loading && <div className="absolute inset-0 flex items-center justify-center text-gray-400 bg-black/20">加载中...</div>}
