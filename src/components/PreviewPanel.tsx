@@ -13,6 +13,7 @@ import VxlViewer from './preview/VxlViewer'
 import VxlViewer3D from './preview/VxlViewer3D.tsx'
 import HvaViewer from './preview/HvaViewer'
 import MixDirectoryViewer from './preview/MixDirectoryViewer'
+import WavViewer from './preview/WavViewer'
 import type { ResourceContext } from '../services/gameRes/ResourceContext'
 
 type MixFileData = { file: File; info: MixFileInfo }
@@ -149,6 +150,10 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
     ],
     pcx: [
       { key: 'image', label: '图像', Component: PcxViewer },
+      { key: 'hex', label: '十六进制', Component: HexViewer },
+    ],
+    wav: [
+      { key: 'audio', label: '音频', Component: WavViewer },
       { key: 'hex', label: '十六进制', Component: HexViewer },
     ],
     hva: [
