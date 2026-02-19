@@ -1,7 +1,7 @@
 import { FileSystemUtil } from './FileSystemUtil'
 import { GameResConfig } from './GameResConfig'
 import { GameResImporter, type ImportOptions } from './GameResImporter'
-import { ResourceContext } from './ResourceContext'
+import { ResourceContext, type ResourceLoadProgressEvent } from './ResourceContext'
 import type { GameResImportProgressEvent, GameResImportResult } from './types'
 
 export class GameResBootstrap {
@@ -9,8 +9,11 @@ export class GameResBootstrap {
     return GameResConfig.load()
   }
 
-  static async loadContext(activeModName: string | null): Promise<ResourceContext> {
-    return ResourceContext.load(activeModName)
+  static async loadContext(
+    activeModName: string | null,
+    onProgress?: (event: ResourceLoadProgressEvent) => void,
+  ): Promise<ResourceContext> {
+    return ResourceContext.load(activeModName, onProgress)
   }
 
   static async reimportBaseFromDirectory(

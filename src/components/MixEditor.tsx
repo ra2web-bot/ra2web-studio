@@ -10,7 +10,7 @@ import { DataStream } from '../data/DataStream'
 import { MixFile as MixFileDataStream } from '../data/MixFile'
 import { GameResBootstrap } from '../services/gameRes/GameResBootstrap'
 import { FileSystemUtil } from '../services/gameRes/FileSystemUtil'
-import type { ResourceContext } from '../services/gameRes/ResourceContext'
+import type { ResourceContext, ResourceLoadProgressEvent } from '../services/gameRes/ResourceContext'
 import { normalizeResourceFilename } from '../services/gameRes/patterns'
 import {
   MixArchiveBuilder,
@@ -51,6 +51,7 @@ function cloneBytes(bytes: Uint8Array): Uint8Array {
 }
 
 const NON_ERROR_STAGE_ORDER = GAME_RES_IMPORT_STAGE_ORDER.filter((stage) => stage !== 'error')
+const STARTUP_LOADED_RESOURCE_LIMIT = 10
 
 function applyProgressEventToSteps(
   steps: GameResImportStepState[],
@@ -104,6 +105,12 @@ const MixEditor: React.FC = () => {
   const [metadataDrawerOpen, setMetadataDrawerOpen] = useState(false)
   // 导航栈：从顶层 MIX 到当前容器（可能是子 MIX）
   const [navStack, setNavStack] = useState<MixContainerNode[]>([])
+  const [initialBooting, setInitialBooting] = useState(true)
+  const [showStartupLoadingScreen, setShowStartupLoadingScreen] = useState(false)
+  const [startupLoadingStatus, setStartupLoadingStatus] = useState('')
+  const [startupTotalResourceCount, setStartupTotalResourceCount] = useState(0)
+  const [startupLoadedResourceCount, setStartupLoadedResourceCount] = useState(0)
+  const [startupLoadedResourceNames, setStartupLoadedResourceNames] = useState<string[]>([])
 
   const initializeSelection = useCallback((nextMixFiles: MixFileData[]) => {
     if (!nextMixFiles.length) {
@@ -134,6 +141,59 @@ const MixEditor: React.FC = () => {
     setImportProgressSteps((prev) => applyProgressEventToSteps(prev, event))
     setProgressMessage(event.message)
   }, [])
+
+  const appendStartupLoadedResource = useCallback((name: string) => {
+    setStartupLoadedResourceNames((prev) => {
+      const trimmed = name.trim()
+      if (!trimmed) return prev
+      const deDuped = prev.filter((item) => item !== trimmed)
+      const next = [...deDuped, trimmed]
+      return next.slice(-STARTUP_LOADED_RESOURCE_LIMIT)
+    })
+  }, [])
+
+  const handleStartupResourceProgress = useCallback((event: ResourceLoadProgressEvent) => {
+    if (event.phase === 'scan') {
+      setStartupTotalResourceCount(event.totalCount)
+      setStartupLoadedResourceCount(event.loadedCount)
+      setShowStartupLoadingScreen(event.totalCount > 0)
+      if (event.totalCount > 0) {
+        setStartupLoadingStatus(`${t('mixEditor.readingResources')} (${event.totalCount})`)
+      } else {
+        setStartupLoadingStatus(t('mixEditor.readingResources'))
+      }
+      return
+    }
+
+    if (event.phase === 'read' || event.phase === 'parse') {
+      if (event.itemName) {
+        setStartupLoadingStatus(`${t('mixEditor.readingResources')} ${event.itemName}`)
+      }
+      return
+    }
+
+    if (event.phase === 'loaded') {
+      setStartupLoadedResourceCount(event.loadedCount)
+      if (event.itemName) {
+        appendStartupLoadedResource(event.itemName)
+        if (event.itemKind === 'archive') {
+          setStartupLoadingStatus(`[MIX] ${event.itemName}`)
+        } else {
+          setStartupLoadingStatus(`[FILE] ${event.itemName}`)
+        }
+      }
+      return
+    }
+
+    if (event.phase === 'finalize') {
+      setStartupLoadingStatus(t('gameRes.finalize'))
+      return
+    }
+
+    if (event.phase === 'done') {
+      setStartupLoadingStatus(t('gameRes.done'))
+    }
+  }, [appendStartupLoadedResource, t])
 
   const createMixReaderFromFileObj = useCallback(async (fileObj: File | VirtualFile) => {
     if (fileObj instanceof File) {
@@ -226,12 +286,26 @@ const MixEditor: React.FC = () => {
     [openContainerEntry],
   )
 
-  const reloadResourceContext = useCallback(async (restoreTarget?: RestorableNavigationTarget) => {
+  const reloadResourceContext = useCallback(async (
+    restoreTarget?: RestorableNavigationTarget,
+    options?: { startup?: boolean },
+  ) => {
+    const isStartup = options?.startup === true
+    if (isStartup) {
+      setShowStartupLoadingScreen(false)
+      setStartupLoadingStatus(t('mixEditor.readingResources'))
+      setStartupTotalResourceCount(0)
+      setStartupLoadedResourceCount(0)
+      setStartupLoadedResourceNames([])
+    }
     setLoading(true)
     setProgressMessage(t('mixEditor.readingResources'))
     try {
       const config = GameResBootstrap.loadConfig()
-      const ctx = await GameResBootstrap.loadContext(config.activeModName)
+      const ctx = await GameResBootstrap.loadContext(
+        config.activeModName,
+        isStartup ? handleStartupResourceProgress : undefined,
+      )
       setResourceContext(ctx)
       setResourceReady(ctx.readiness.ready)
       setMissingRequiredFiles(ctx.readiness.missingRequiredFiles)
@@ -261,11 +335,12 @@ const MixEditor: React.FC = () => {
       setMetadataDrawerOpen(false)
     } finally {
       setLoading(false)
+      if (isStartup) setInitialBooting(false)
     }
-  }, [initializeSelection, restoreNavigation, t])
+  }, [initializeSelection, restoreNavigation, t, handleStartupResourceProgress])
 
   useEffect(() => {
-    reloadResourceContext()
+    reloadResourceContext(undefined, { startup: true })
   }, [reloadResourceContext])
 
   const handleReimportBaseDirectory = useCallback(async () => {
@@ -522,6 +597,16 @@ const MixEditor: React.FC = () => {
     return ext === 'mix' || ext === 'mmx' || ext === 'yro'
   }, [selectedLeafName])
 
+  const showInitialLoadingSplash = (
+    !resourceReady
+    && initialBooting
+    && loading
+    && showStartupLoadingScreen
+  )
+  const startupProgressPercent = startupTotalResourceCount > 0
+    ? Math.max(0, Math.min(100, Math.round((startupLoadedResourceCount / startupTotalResourceCount) * 100)))
+    : 0
+
   const handleEnterCurrentMix = useCallback(() => {
     if (!canEnterCurrentMix || !selectedLeafName) return
     void handleDrillDown(selectedLeafName)
@@ -774,50 +859,112 @@ const MixEditor: React.FC = () => {
 
       {/* 主内容区域 */}
       {!resourceReady ? (
-        <div className="flex-1 flex items-center justify-center p-8">
-          <div className="max-w-2xl w-full bg-gray-800 border border-gray-700 rounded-lg p-6">
-            <h2 className="text-xl font-semibold mb-3">{t('mixEditor.importGameRes')}</h2>
-            <p className="text-gray-300 text-sm leading-6">
-              {t('mixEditor.importHint')}
-            </p>
-            <div className="mt-4 text-sm text-yellow-300">
-              {t('mixEditor.missingFiles', { files: missingRequiredFiles.join(', ') || t('mixEditor.unknownMissing') })}
-            </div>
-            <div className="mt-5 flex flex-wrap gap-3">
-              <button
-                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm"
-                onClick={() => {
-                  const input = document.createElement('input')
-                  input.type = 'file'
-                  input.accept = '.tar.gz,.tgz,.exe,.7z,.zip,.mix'
-                  input.multiple = true
-                  input.onchange = (e) => {
-                    const files = Array.from((e.target as HTMLInputElement).files || [])
-                    void handleReimportBaseArchives(files)
-                  }
-                  input.click()
-                }}
-                disabled={loading}
-              >
-                {t('mixEditor.selectArchive')}
-              </button>
-              <button
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm"
-                onClick={() => handleReimportBaseDirectory()}
-                disabled={loading}
-              >
-                {t('mixEditor.selectGameDir')}
-              </button>
-            </div>
-            <ImportProgressPanel
-              steps={importProgressSteps}
-              message={importProgressEvent?.message}
-              currentItem={importProgressEvent?.currentItem}
-              percentage={importProgressEvent?.percentage}
-              fallbackMessage={loading ? progressMessage : t('mixEditor.selectToStart')}
+        showInitialLoadingSplash ? (
+          <div className="flex-1 relative overflow-hidden">
+            <img
+              src="/game-bg.png"
+              alt=""
+              className="absolute inset-0 w-full h-full object-cover"
             />
+            <div className="absolute inset-0 bg-black/45" />
+            <div className="absolute inset-0 bg-gradient-to-br from-black/70 via-black/35 to-black/75" />
+            <div className="absolute left-8 top-8 max-w-xl">
+              <div className="text-2xl font-bold tracking-wide text-white drop-shadow-md">
+                RA2Web Studio
+              </div>
+              <div className="mt-2 text-sm text-gray-200 drop-shadow">
+                {startupLoadingStatus || t('mixEditor.readingResources')}
+              </div>
+              {startupTotalResourceCount > 0 && (
+                <div className="mt-3 w-72">
+                  <div className="mb-1 flex items-center justify-between text-xs text-gray-200">
+                    <span>{t('common.progress')}</span>
+                    <span>{startupProgressPercent}%</span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded bg-black/45">
+                    <div
+                      className="h-full bg-blue-400 transition-all duration-200"
+                      style={{ width: `${startupProgressPercent}%` }}
+                    />
+                  </div>
+                  <div className="mt-1 text-xs text-gray-300">
+                    {`${startupLoadedResourceCount} / ${startupTotalResourceCount}`}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="absolute right-5 bottom-5 w-[min(30rem,90vw)] rounded-lg border border-gray-500/40 bg-black/45 backdrop-blur-sm shadow-2xl">
+              <div className="px-3 py-2 border-b border-gray-500/30 text-xs font-semibold tracking-wide text-gray-200">
+                Loaded Resources
+              </div>
+              <div className="max-h-44 overflow-y-auto px-3 py-2 space-y-1">
+                {startupLoadedResourceNames.length > 0 ? (
+                  startupLoadedResourceNames.map((name, idx) => (
+                    <div
+                      key={`${name}-${idx}`}
+                      className={`text-xs truncate ${
+                        idx === startupLoadedResourceNames.length - 1
+                          ? 'text-emerald-200 animate-pulse'
+                          : 'text-emerald-100/85'
+                      }`}
+                      title={name}
+                    >
+                      {name}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-xs text-gray-300">{t('importProgress.waitStart')}</div>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex-1 flex items-center justify-center p-8">
+            <div className="max-w-2xl w-full bg-gray-800 border border-gray-700 rounded-lg p-6">
+              <h2 className="text-xl font-semibold mb-3">{t('mixEditor.importGameRes')}</h2>
+              <p className="text-gray-300 text-sm leading-6">
+                {t('mixEditor.importHint')}
+              </p>
+              <div className="mt-4 text-sm text-yellow-300">
+                {t('mixEditor.missingFiles', { files: missingRequiredFiles.join(', ') || t('mixEditor.unknownMissing') })}
+              </div>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <button
+                  className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm"
+                  onClick={() => {
+                    const input = document.createElement('input')
+                    input.type = 'file'
+                    input.accept = '.tar.gz,.tgz,.exe,.7z,.zip,.mix'
+                    input.multiple = true
+                    input.onchange = (e) => {
+                      const files = Array.from((e.target as HTMLInputElement).files || [])
+                      void handleReimportBaseArchives(files)
+                    }
+                    input.click()
+                  }}
+                  disabled={loading}
+                >
+                  {t('mixEditor.selectArchive')}
+                </button>
+                <button
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm"
+                  onClick={() => handleReimportBaseDirectory()}
+                  disabled={loading}
+                >
+                  {t('mixEditor.selectGameDir')}
+                </button>
+              </div>
+              <ImportProgressPanel
+                steps={importProgressSteps}
+                message={importProgressEvent?.message}
+                currentItem={importProgressEvent?.currentItem}
+                percentage={importProgressEvent?.percentage}
+                fallbackMessage={loading ? progressMessage : t('mixEditor.selectToStart')}
+              />
+            </div>
+          </div>
+        )
       ) : (
         <div className="flex-1 flex min-h-0">
           {/* 左侧文件树 */}

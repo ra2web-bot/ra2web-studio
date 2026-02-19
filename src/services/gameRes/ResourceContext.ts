@@ -6,6 +6,23 @@ import { GameResConfig } from './GameResConfig'
 import { getArchivePriority, isMixLikeFile, isStandaloneIniLikeFile } from './patterns'
 import type { ImportedResourceFile, ResourceBucket, ResourceReadiness } from './types'
 
+export type ResourceLoadProgressPhase =
+  | 'scan'
+  | 'read'
+  | 'parse'
+  | 'loaded'
+  | 'finalize'
+  | 'done'
+  | 'skip'
+
+export interface ResourceLoadProgressEvent {
+  phase: ResourceLoadProgressPhase
+  itemName?: string
+  itemKind?: 'archive' | 'standalone'
+  loadedCount: number
+  totalCount: number
+}
+
 export interface ResourceMixFile {
   bucket: ResourceBucket
   priority: number
@@ -94,17 +111,45 @@ export class ResourceContext {
     return [...result]
   }
 
-  static async load(activeModName: string | null): Promise<ResourceContext> {
+  static async load(
+    activeModName: string | null,
+    onProgress?: (event: ResourceLoadProgressEvent) => void,
+  ): Promise<ResourceContext> {
     const importedFiles = await FileSystemUtil.listAllImportedFiles(activeModName)
     const archives: ResourceMixFile[] = []
     const standaloneFiles: ResourceStandaloneFile[] = []
+    const totalCount = importedFiles.length
+    let loadedCount = 0
+    onProgress?.({
+      phase: 'scan',
+      loadedCount,
+      totalCount,
+    })
     for (const item of importedFiles) {
+      onProgress?.({
+        phase: 'read',
+        itemName: item.name,
+        loadedCount,
+        totalCount,
+      })
       const file = await FileSystemUtil.readImportedFile(item.bucket, item.name, item.modName ?? null)
       if (isMixLikeFile(item.name)) {
+        onProgress?.({
+          phase: 'parse',
+          itemName: item.name,
+          loadedCount,
+          totalCount,
+        })
         let info: MixFileInfo
         try {
           info = await MixParser.parseFile(file)
         } catch (e: any) {
+          onProgress?.({
+            phase: 'skip',
+            itemName: item.name,
+            loadedCount,
+            totalCount,
+          })
           continue
         }
         archives.push({
@@ -114,6 +159,14 @@ export class ResourceContext {
           file,
           info,
         })
+        loadedCount++
+        onProgress?.({
+          phase: 'loaded',
+          itemName: item.name,
+          itemKind: 'archive',
+          loadedCount,
+          totalCount,
+        })
       } else if (isStandaloneIniLikeFile(item.name)) {
         standaloneFiles.push({
           bucket: item.bucket,
@@ -122,9 +175,34 @@ export class ResourceContext {
           filename: item.name,
           file,
         })
+        loadedCount++
+        onProgress?.({
+          phase: 'loaded',
+          itemName: item.name,
+          itemKind: 'standalone',
+          loadedCount,
+          totalCount,
+        })
+      } else {
+        onProgress?.({
+          phase: 'skip',
+          itemName: item.name,
+          loadedCount,
+          totalCount,
+        })
       }
     }
+    onProgress?.({
+      phase: 'finalize',
+      loadedCount,
+      totalCount,
+    })
     const discoveredPalettePaths = await this.discoverPalettePaths(archives)
+    onProgress?.({
+      phase: 'done',
+      loadedCount,
+      totalCount,
+    })
     return new ResourceContext({
       activeModName,
       importedFiles,
