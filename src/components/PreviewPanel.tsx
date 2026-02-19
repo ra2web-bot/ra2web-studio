@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react'
-import { Image, Box, FileText, Music, Info, Archive, Video } from 'lucide-react'
+import { Image, Box, FileText, Music, Info, Archive, Video, Download } from 'lucide-react'
 import { MixFileInfo } from '../services/MixParser'
 import IniViewer from './preview/IniViewer'
 import DatViewer from './preview/DatViewer'
@@ -18,6 +18,7 @@ import WavViewer from './preview/WavViewer'
 import MapViewer from './preview/MapViewer'
 import BikViewer from './preview/BikViewer'
 import type { ResourceContext } from '../services/gameRes/ResourceContext'
+import ExportDialog from './export/ExportDialog'
 
 type MixFileData = { file: File; info: MixFileInfo }
 
@@ -125,6 +126,8 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
   }
 
   const ext = useMemo(() => selectedFile?.split('.').pop()?.toLowerCase() ?? '', [selectedFile])
+  const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  const [exportInitialTab, setExportInitialTab] = useState<'raw' | 'static' | 'gif'>('raw')
 
   type ViewerDef = {
     key: string
@@ -228,24 +231,10 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
 
   return (
     <div className="h-full flex flex-col">
-      {/* 预览头部：面包屑 + 文件信息 */}
+      {/* 预览头部：文件信息 + 文件操作区 */}
       <div className="p-4 border-b border-gray-700">
-        {breadcrumbs && breadcrumbs.length > 0 && (
-          <div className="mb-2 text-sm text-gray-300 flex flex-wrap items-center gap-1">
-            {breadcrumbs.map((seg, i) => (
-              <span key={i} className="flex items-center gap-1">
-                <button
-                  className="hover:text-white disabled:text-gray-400 focus:outline-none"
-                  onClick={() => onBreadcrumbClick && onBreadcrumbClick(i)}
-                >
-                  {seg}
-                </button>
-                {i < breadcrumbs.length - 1 && <span className="text-gray-500">/</span>}
-              </span>
-            ))}
-          </div>
-        )}
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center space-x-3 min-w-0">
           {getFileTypeIcon(selectedFile)}
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -266,6 +255,38 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
               </button>
             </div>
             <p className="text-sm text-gray-400">{getFileTypeName(selectedFile)}</p>
+          </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="px-3 py-1.5 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-100 inline-flex items-center gap-1"
+              onClick={() => {
+                setExportInitialTab('raw')
+                setExportDialogOpen(true)
+              }}
+            >
+              <Download size={14} />
+              原始导出
+            </button>
+            <button
+              type="button"
+              className={`px-3 py-1.5 rounded text-xs inline-flex items-center gap-1 ${
+                ext === 'shp'
+                  ? 'bg-blue-700 hover:bg-blue-600 text-white'
+                  : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+              }`}
+              onClick={() => {
+                if (ext !== 'shp') return
+                setExportInitialTab('static')
+                setExportDialogOpen(true)
+              }}
+              disabled={ext !== 'shp'}
+              title={ext === 'shp' ? '导出 PNG/JPG/GIF' : '仅 SHP 支持图片/GIF 导出'}
+            >
+              <Image size={14} />
+              图片/GIF 导出
+            </button>
           </div>
         </div>
       </div>
@@ -311,12 +332,35 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
         </div>
       </div>
 
-      {/* 预览工具栏 */}
-      <div className="p-2 border-t border-gray-700 flex justify-between items-center">
-        <div className="flex space-x-2">
+      {/* 预览底部：路径导航 + 当前文件 */}
+      <div className="p-2 border-t border-gray-700 space-y-1">
+        {breadcrumbs && breadcrumbs.length > 0 && (
+          <div className="text-xs text-gray-300 flex flex-wrap items-center gap-1">
+            {breadcrumbs.map((seg, i) => (
+              <span key={i} className="flex items-center gap-1">
+                <button
+                  className="hover:text-white disabled:text-gray-400 focus:outline-none"
+                  onClick={() => onBreadcrumbClick && onBreadcrumbClick(i)}
+                >
+                  {seg}
+                </button>
+                {i < breadcrumbs.length - 1 && <span className="text-gray-500">/</span>}
+              </span>
+            ))}
+          </div>
+        )}
+        <div>
           <span className="text-xs text-gray-400">您正在查看文件：{selectedFile.split('/').pop()}</span>
         </div>
       </div>
+      <ExportDialog
+        open={exportDialogOpen}
+        onClose={() => setExportDialogOpen(false)}
+        selectedFile={selectedFile}
+        mixFiles={mixFiles}
+        resourceContext={resourceContext}
+        initialTab={exportInitialTab}
+      />
     </div>
   )
 }
