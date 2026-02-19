@@ -475,6 +475,8 @@ export class MixParser {
     sniffedExt: string,
     structuralProbe: '' | 'shp' | 'tmp' | 'tmp-ra',
   ): string {
+    // 优先保留 map/mpr 扩展，避免被文本嗅探为 ini/txt 后覆盖。
+    if (preferredExt === 'map' || preferredExt === 'mpr') return preferredExt
     if (structuralProbe === 'shp') return 'shp'
     if (structuralProbe === 'tmp' || structuralProbe === 'tmp-ra') return 'tmp'
     if (sniffedExt) return sniffedExt
