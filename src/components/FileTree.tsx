@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import { ArrowDown, ArrowUp, ArrowUpDown, File, Folder } from 'lucide-react'
+import { useLocale } from '../i18n/LocaleContext'
 import { MixFileData } from './MixEditor'
 import SearchableSelect from './common/SearchableSelect'
 
@@ -50,6 +51,7 @@ const FileTree: React.FC<FileTreeProps> = ({
   onDrillDown,
   onNavigateUp,
 }) => {
+  const { t } = useLocale()
   const [searchQuery, setSearchQuery] = useState('')
   const [sortState, setSortState] = useState<{ column: SortColumn | null; direction: SortDirection | null }>({
     column: null,
@@ -188,7 +190,7 @@ const FileTree: React.FC<FileTreeProps> = ({
   const activeMixOptions = useMemo(
     () => mixFiles.map((mix) => {
       const sourceLabel = mixSourceLabelByName?.[mix.info.name]
-      const label = sourceLabel === 'base' ? `${mix.info.name} [基座文件]` : mix.info.name
+      const label = sourceLabel === 'base' ? `${mix.info.name} ${t('fileTree.baseFileTag')}` : mix.info.name
       return {
         value: mix.info.name,
         label,
@@ -227,7 +229,7 @@ const FileTree: React.FC<FileTreeProps> = ({
         <div className="w-16 text-center text-xs text-gray-400 px-2 py-1" title={getFileTypeName(file.extension)}>
           {getFileTypeName(file.extension)}
         </div>
-        <div className="w-20 text-right text-xs text-gray-400 px-2 py-1" title={`${file.length} 字节`}>
+        <div className="w-20 text-right text-xs text-gray-400 px-2 py-1" title={`${file.length} ${t('fileTree.bytes')}`}>
           {formatFileSize(file.length)}
         </div>
       </div>
@@ -237,7 +239,7 @@ const FileTree: React.FC<FileTreeProps> = ({
   return (
     <div className="h-full flex flex-col">
       <div className="p-2 flex-shrink-0 border-b border-gray-700">
-        <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide">文件浏览器</div>
+        <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{t('fileTree.title')}</div>
         <div className="mt-2 grid grid-cols-2 gap-2">
           <button
             type="button"
@@ -248,7 +250,7 @@ const FileTree: React.FC<FileTreeProps> = ({
             }`}
             onClick={() => onBrowserModeChange('workspace')}
           >
-            单文件视角
+            {t('fileTree.singleFileView')}
           </button>
           <button
             type="button"
@@ -259,7 +261,7 @@ const FileTree: React.FC<FileTreeProps> = ({
             }`}
             onClick={() => onBrowserModeChange('repository')}
           >
-            全局视角
+            {t('fileTree.globalView')}
           </button>
         </div>
         {browserMode === 'workspace' && (
@@ -267,7 +269,7 @@ const FileTree: React.FC<FileTreeProps> = ({
             <input
               type="text"
               className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-gray-100"
-              placeholder="搜索素材名/后缀..."
+              placeholder={t('fileTree.searchPlaceholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -275,7 +277,7 @@ const FileTree: React.FC<FileTreeProps> = ({
         )}
         {browserMode === 'workspace' && mixFiles.length > 1 && (
           <div className="mt-2">
-            <label className="text-xs text-gray-400 block mb-1">当前激活 MIX</label>
+            <label className="text-xs text-gray-400 block mb-1">{t('fileTree.activeMixLabel')}</label>
             <SearchableSelect
               value={activeMixValue}
               options={activeMixOptions}
@@ -284,8 +286,8 @@ const FileTree: React.FC<FileTreeProps> = ({
               }}
               triggerClassName="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-left text-gray-100 flex items-center gap-2"
               menuClassName="absolute z-50 mt-1 left-0 right-0 rounded border border-gray-600 bg-gray-700 shadow-xl"
-              searchPlaceholder="搜索 MIX..."
-              noResultsText="未找到匹配 MIX"
+              searchPlaceholder={t('fileTree.searchMixPlaceholder')}
+              noResultsText={t('fileTree.noMatchMix')}
               footerHint=""
             />
           </div>
@@ -293,7 +295,7 @@ const FileTree: React.FC<FileTreeProps> = ({
         {browserMode === 'workspace' && isNestedWorkspace && navPrefix && (
           <div className="mt-2 flex items-center gap-2">
             <div className="text-xs text-gray-400 truncate flex-1" title={navPrefix}>
-              当前容器：{navPrefix}
+              {t('fileTree.currentContainer')}：{navPrefix}
             </div>
             {onNavigateUp && (
               <button
@@ -301,7 +303,7 @@ const FileTree: React.FC<FileTreeProps> = ({
                 className="px-2 py-0.5 text-[11px] rounded border border-gray-600 bg-gray-700 text-gray-200 hover:bg-gray-600"
                 onClick={onNavigateUp}
               >
-                返回上一级
+                {t('fileTree.backUp')}
               </button>
             )}
           </div>
@@ -314,25 +316,25 @@ const FileTree: React.FC<FileTreeProps> = ({
           type="button"
           className="flex-1 min-w-0 px-2 py-1 text-left hover:bg-gray-700/60 transition-colors"
           onClick={() => nextSortState('filename')}
-          title="按文件名排序：正序 / 倒序 / 取消"
+          title={t('fileTree.sortHint', { col: t('fileTree.filename') })}
         >
-          文件名 {getSortIndicator('filename')}
+          {t('fileTree.filename')} {getSortIndicator('filename')}
         </button>
         <button
           type="button"
           className="w-16 text-center px-2 py-1 hover:bg-gray-700/60 transition-colors"
           onClick={() => nextSortState('type')}
-          title="按类型排序：正序 / 倒序 / 取消"
+          title={t('fileTree.sortHint', { col: t('fileTree.type') })}
         >
-          类型 {getSortIndicator('type')}
+          {t('fileTree.type')} {getSortIndicator('type')}
         </button>
         <button
           type="button"
           className="w-20 text-right px-2 py-1 hover:bg-gray-700/60 transition-colors"
           onClick={() => nextSortState('size')}
-          title="按大小排序：正序 / 倒序 / 取消"
+          title={t('fileTree.sortHint', { col: t('fileTree.size') })}
         >
-          大小 {getSortIndicator('size')}
+          {t('fileTree.size')} {getSortIndicator('size')}
         </button>
       </div>
 
@@ -343,10 +345,10 @@ const FileTree: React.FC<FileTreeProps> = ({
             sortedWorkspaceFileList.length > 0 ? (
               sortedWorkspaceFileList.map((file, index) => renderFileRow(file, `${file.path}-${index}`))
             ) : (
-              <div className="px-3 py-3 text-xs text-gray-400">未找到匹配素材。</div>
+              <div className="px-3 py-3 text-xs text-gray-400">{t('fileTree.noMatchMaterial')}</div>
             )
           ) : (
-            <div className="px-3 py-3 text-xs text-gray-400">当前工作区暂无可显示文件。</div>
+            <div className="px-3 py-3 text-xs text-gray-400">{t('fileTree.workspaceEmpty')}</div>
           )
         ) : sortedRepositoryGroups.length > 0 ? (
           sortedRepositoryGroups.map((group, groupIndex) => (
@@ -375,7 +377,7 @@ const FileTree: React.FC<FileTreeProps> = ({
             </React.Fragment>
           ))
         ) : (
-          <div className="px-3 py-3 text-xs text-gray-400">资源仓库为空，请先导入资源。</div>
+          <div className="px-3 py-3 text-xs text-gray-400">{t('fileTree.repoEmpty')}</div>
         )}
       </div>
     </div>

@@ -4,6 +4,7 @@ import { BikTranscoder } from '../../services/video/BikTranscoder'
 import { BikCacheStore } from '../../services/video/BikCacheStore'
 import { buildBikCacheKey } from '../../services/video/BikCacheKey'
 import type { ResourceContext } from '../../services/gameRes/ResourceContext'
+import { useLocale } from '../../i18n/LocaleContext'
 
 type MixFileData = { file: File; info: MixFileInfo }
 
@@ -30,6 +31,7 @@ const BikViewer: React.FC<{
   mixFiles: MixFileData[]
   resourceContext?: ResourceContext | null
 }> = ({ selectedFile, mixFiles }) => {
+  const { t } = useLocale()
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [loading, setLoading] = useState(false)
   const [phaseText, setPhaseText] = useState('')
@@ -65,7 +67,7 @@ const BikViewer: React.FC<{
       let loadedBytes = 0
       cleanupVideo()
       setLoading(true)
-      setPhaseText('正在读取 MIX 条目...')
+      setPhaseText(t('bik.readingMixEntry'))
       setError(null)
       setPlaybackError(null)
       setVideoUrl(null)
@@ -76,14 +78,14 @@ const BikViewer: React.FC<{
       try {
         const extractStart = performance.now()
         const slash = selectedFile.indexOf('/')
-        if (slash <= 0) throw new Error('无效路径')
+        if (slash <= 0) throw new Error('Invalid path')
         const mixName = selectedFile.substring(0, slash)
         const inner = selectedFile.substring(slash + 1)
         const mix = mixFiles.find((m) => m.info.name === mixName)
-        if (!mix) throw new Error('未找到对应 MIX')
+        if (!mix) throw new Error('MIX not found')
 
         const vf = await MixParser.extractFile(mix.file, inner)
-        if (!vf) throw new Error('无法从 MIX 中提取 BIK 文件')
+        if (!vf) throw new Error('Failed to extract BIK from MIX')
         const rawBytes = vf.getBytes()
         extractMs = performance.now() - extractStart
         if (cancelled) return
@@ -91,7 +93,7 @@ const BikViewer: React.FC<{
         setSourceSize(rawBytes.byteLength)
         loadedBytes = rawBytes.byteLength
 
-        setPhaseText('正在计算缓存键...')
+        setPhaseText(t('bik.computingCacheKey'))
         const keyStart = performance.now()
         const cacheKey = await buildBikCacheKey({
           mixName,
@@ -101,7 +103,7 @@ const BikViewer: React.FC<{
         keyMs = performance.now() - keyStart
         if (cancelled) return
 
-        setPhaseText('正在检查缓存...')
+        setPhaseText(t('bik.checkingCache'))
         const cacheLookupStart = performance.now()
         const cached = await BikCacheStore.get(cacheKey)
         cacheLookupMs = performance.now() - cacheLookupStart
@@ -110,19 +112,19 @@ const BikViewer: React.FC<{
         let webmBytes: Uint8Array
         if (cached) {
           cacheSource = cached.source
-          setCacheStatus(cached.source === 'memory' ? '缓存命中（内存）' : '缓存命中（磁盘）')
-          setPhaseText('缓存命中，正在准备播放...')
+          setCacheStatus(cached.source === 'memory' ? t('bik.cacheHitMemory') : t('bik.cacheHitDisk'))
+          setPhaseText(t('bik.preparingPlayback'))
           webmBytes = cached.bytes
         } else {
           cacheSource = 'transcode'
-          setCacheStatus('首次转码')
-          setPhaseText('首次转码中（高质量）...')
+          setCacheStatus(t('bik.firstTranscode'))
+          setPhaseText(t('bik.firstTranscodeProgress'))
           await warmupPromise
           const transcodeStart = performance.now()
           webmBytes = await BikTranscoder.transcodeToWebm(cacheKey, inner, rawBytes)
           transcodeMs = performance.now() - transcodeStart
           await BikCacheStore.set(cacheKey, webmBytes).catch(() => {})
-          setPhaseText('首次转码完成（已缓存）')
+          setPhaseText(t('bik.firstTranscodeDone'))
         }
         if (cancelled) return
 
@@ -138,7 +140,7 @@ const BikViewer: React.FC<{
         setVideoUrl(url)
         setConvertedSize(webmBytes.byteLength)
         if (!cached) {
-          setPhaseText('首次转码完成，可播放')
+          setPhaseText(t('bik.firstTranscodeReady'))
         }
         console.info('[BikViewer] load timings', {
           file: inner,
@@ -152,7 +154,7 @@ const BikViewer: React.FC<{
         })
       } catch (e: any) {
         if (!cancelled) {
-          setError(e?.message || 'BIK 预览失败')
+          setError(e?.message || t('bik.previewFailed'))
           setPhaseText('')
           setCacheStatus('')
         }
@@ -170,29 +172,29 @@ const BikViewer: React.FC<{
       cleanupVideo()
       if (createdUrl) URL.revokeObjectURL(createdUrl)
     }
-  }, [selectedFile, mixFiles])
+  }, [selectedFile, mixFiles, t])
 
   const largeFile = sourceSize >= LARGE_FILE_WARNING_THRESHOLD
 
   return (
     <div className="w-full h-full flex flex-col">
       <div className="px-3 py-2 text-xs text-gray-400 border-b border-gray-700 flex items-center justify-between gap-3">
-        <span>BIK 预览（即时转码 WebM / 静音）</span>
+        <span>{t('bik.previewCaption')}</span>
         <span className="text-gray-500 truncate">{selectedFile.split('/').pop() || selectedFile}</span>
       </div>
 
       <div className="flex-1 p-4 overflow-auto">
         {loading && (
           <div className="space-y-2 text-sm text-gray-400">
-            <div>{phaseText || '正在加载...'}</div>
-            {sourceSize > 0 && <div className="text-xs text-gray-500">源文件大小：{formatFileSize(sourceSize)}</div>}
+            <div>{phaseText || t('bik.loading')}</div>
+            {sourceSize > 0 && <div className="text-xs text-gray-500">{t('bik.sourceSize')}{formatFileSize(sourceSize)}</div>}
           </div>
         )}
 
         {!loading && error && (
           <div className="space-y-3">
             <div className="text-sm text-red-400">{error}</div>
-            <div className="text-xs text-gray-500">可切换到“十六进制”视图排查文件头和原始数据。</div>
+            <div className="text-xs text-gray-500">{t('bik.hexViewHint')}</div>
           </div>
         )}
 
@@ -206,20 +208,20 @@ const BikViewer: React.FC<{
               preload="metadata"
               src={videoUrl}
               className="w-full max-w-[900px] bg-black rounded"
-              onError={() => setPlaybackError('浏览器无法播放当前转码结果，可切换十六进制视图排查。')}
+              onError={() => setPlaybackError(t('bik.playbackError'))}
               onLoadedData={() => setPlaybackError(null)}
             />
 
             <div className="text-xs text-gray-400 space-y-1">
-              <div>源文件大小：{formatFileSize(sourceSize)}</div>
-              <div>转码后大小：{formatFileSize(convertedSize)}</div>
-              <div>缓存状态：{cacheStatus || '未命中'}</div>
-              <div>说明：当前版本仅视频轨，音频已禁用（-an）。</div>
+              <div>{t('bik.sourceSize')}{formatFileSize(sourceSize)}</div>
+              <div>{t('bik.convertedSize')}{formatFileSize(convertedSize)}</div>
+              <div>{t('bik.cacheStatus')}{cacheStatus || t('bik.cacheMiss')}</div>
+              <div>{t('bik.noteVideoOnly')}</div>
             </div>
 
             {largeFile && (
               <div className="text-xs text-amber-300">
-                当前 BIK 文件较大，首次转码耗时可能明显增加。
+                {t('bik.largeFileWarning')}
               </div>
             )}
 
@@ -228,7 +230,7 @@ const BikViewer: React.FC<{
         )}
 
         {!loading && !error && !videoUrl && (
-          <div className="text-sm text-gray-400">没有可播放的视频数据。</div>
+          <div className="text-sm text-gray-400">{t('bik.noVideoData')}</div>
         )}
       </div>
     </div>

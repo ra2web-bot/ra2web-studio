@@ -1,5 +1,6 @@
 import React from 'react'
 import type { GameResImportStepState } from '../services/gameRes/types'
+import { useLocale } from '../i18n/LocaleContext'
 
 interface ImportProgressPanelProps {
   steps: GameResImportStepState[]
@@ -37,34 +38,35 @@ const ImportProgressPanel: React.FC<ImportProgressPanelProps> = ({
   percentage,
   fallbackMessage,
 }) => {
+  const { t } = useLocale()
   const normalizedPercent = typeof percentage === 'number' ? clampPercent(percentage) : null
 
   return (
     <div className="mt-4 rounded-lg border border-gray-700 bg-gray-900/50 p-4">
-      <div className="text-sm font-semibold text-gray-200">归档解析步骤</div>
+      <div className="text-sm font-semibold text-gray-200">{t('importProgress.stepsTitle')}</div>
       <div className="mt-3 grid gap-1">
         {steps.map((step) => (
           <div key={step.id} className={`flex items-center gap-2 text-xs ${getStatusClass(step.status)}`}>
             <span className={`h-2 w-2 rounded-full ${getDotClass(step.status)}`} />
-            <span>{step.label}</span>
+            <span>{t(`gameRes.${step.id}` as 'gameRes.prepare')}</span>
           </div>
         ))}
       </div>
 
       <div className="mt-4 text-sm text-yellow-300">
-        {message || fallbackMessage || '等待开始导入...'}
+        {message || fallbackMessage || t('importProgress.waitStart')}
       </div>
 
       {currentItem && (
         <div className="mt-1 text-xs text-gray-400 break-all">
-          当前条目: {currentItem}
+          {t('importProgress.currentItem')}: {currentItem}
         </div>
       )}
 
       {normalizedPercent !== null && (
         <div className="mt-3">
           <div className="mb-1 flex items-center justify-between text-xs text-gray-400">
-            <span>进度</span>
+            <span>{t('common.progress')}</span>
             <span>{normalizedPercent}%</span>
           </div>
           <div className="h-2 w-full overflow-hidden rounded bg-gray-700">

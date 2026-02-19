@@ -332,7 +332,7 @@ export class PaletteResolver {
       return {
         selection: {
           source: 'manual',
-          reason: '用户手动指定调色板',
+          reason: 'Manually specified',
           resolvedPath: request.manualPalettePath,
         },
         resolvedPalettePath: request.manualPalettePath,
@@ -345,7 +345,7 @@ export class PaletteResolver {
       return {
         selection: {
           source: 'embedded',
-          reason: '素材内嵌调色板',
+          reason: 'Embedded palette',
           resolvedPath: null,
         },
         resolvedPalettePath: null,
@@ -361,8 +361,8 @@ export class PaletteResolver {
         selection: {
           source: 'rule',
           reason: sameNameResolved.fromOverlay
-            ? `规则命中 ${sameNameCandidate}（同名优先，覆盖层优先）`
-            : `规则命中 ${sameNameCandidate}（同名优先）`,
+            ? `Rule hit ${sameNameCandidate} (same-name, overlay)`
+            : `Rule hit ${sameNameCandidate} (same-name)`,
           resolvedPath: sameNameResolved.path,
         },
         resolvedPalettePath: sameNameResolved.path,
@@ -383,8 +383,8 @@ export class PaletteResolver {
         selection: {
           source: 'rule',
           reason: resolved.fromOverlay
-            ? `规则命中 ${candidate}（XCC规则，覆盖层优先）`
-            : `规则命中 ${candidate}（XCC规则）`,
+            ? `Rule hit ${candidate} (XCC rule, overlay)`
+            : `Rule hit ${candidate} (XCC rule)`,
           resolvedPath: resolved.path,
         },
         resolvedPalettePath: resolved.path,
@@ -398,9 +398,9 @@ export class PaletteResolver {
         return {
           selection: {
             source: 'rule',
-            reason: resolved.fromOverlay
-              ? `规则命中 ${candidate}（覆盖层优先）`
-              : `规则命中 ${candidate}`,
+          reason: resolved.fromOverlay
+            ? `Rule hit ${candidate} (overlay)`
+            : `Rule hit ${candidate}`,
             resolvedPath: resolved.path,
           },
           resolvedPalettePath: resolved.path,
@@ -413,7 +413,7 @@ export class PaletteResolver {
     return {
       selection: {
         source: 'fallback-grayscale',
-        reason: '未找到可用 PAL，回退灰度',
+        reason: 'No PAL found, fallback to grayscale',
         resolvedPath: null,
       },
       resolvedPalettePath: null,

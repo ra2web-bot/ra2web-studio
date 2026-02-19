@@ -4,10 +4,12 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { MixParser, MixFileInfo } from '../../services/MixParser'
 import { HvaFile } from '../../data/HvaFile'
 import type { ResourceContext } from '../../services/gameRes/ResourceContext'
+import { useLocale } from '../../i18n/LocaleContext'
 
 type MixFileData = { file: File; info: MixFileInfo }
 
 const HvaViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resourceContext?: ResourceContext | null }> = ({ selectedFile, mixFiles }) => {
+  const { t } = useLocale()
   const mountRef = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -150,9 +152,9 @@ const HvaViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
   return (
     <div className="w-full h-full flex flex-col">
       <div className="px-3 py-2 text-xs text-gray-400 border-b border-gray-700 flex items-center gap-3">
-        <span>HVA 预览（坐标轴表示各 Section 变换）</span>
+        <span>{t('viewer.hvaPreview')}</span>
         <div className="flex items-center gap-2">
-          <span>帧</span>
+          <span>{t('viewer.frame')}</span>
           <input
             type="number"
             className="w-20 bg-gray-800 border border-gray-700 rounded px-2 py-0.5"
@@ -165,7 +167,7 @@ const HvaViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
         </div>
       </div>
       <div ref={mountRef} className="flex-1" />
-      {loading && <div className="absolute inset-0 flex items-center justify-center text-gray-400 bg-black/20">加载中...</div>}
+      {loading && <div className="absolute inset-0 flex items-center justify-center text-gray-400 bg-black/20">{t('bik.loading')}</div>}
       {error && !loading && <div className="absolute top-2 left-2 right-2 p-2 text-red-400 text-xs bg-black/40 rounded">{error}</div>}
     </div>
   )

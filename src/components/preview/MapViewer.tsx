@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { MixParser, MixFileInfo } from '../../services/MixParser'
+import { useLocale } from '../../i18n/LocaleContext'
 import {
   MapPreviewDecodeResult,
   MapRect,
@@ -77,6 +78,7 @@ const MapViewer: React.FC<{
   mixFiles: MixFileData[]
   resourceContext?: ResourceContext | null
 }> = ({ selectedFile, mixFiles }) => {
+  const { t } = useLocale()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -113,7 +115,7 @@ const MapViewer: React.FC<{
         setPreviewData(decoded)
       } catch (e: any) {
         if (!cancelled) {
-          setError(e?.message || '地图小地图预览读取失败')
+          setError(e?.message || t('map.readFailed'))
         }
       } finally {
         if (!cancelled) {
@@ -126,7 +128,7 @@ const MapViewer: React.FC<{
     return () => {
       cancelled = true
     }
-  }, [selectedFile, mixFiles])
+  }, [selectedFile, mixFiles, t])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -137,7 +139,7 @@ const MapViewer: React.FC<{
   return (
     <div className="w-full h-full flex flex-col">
       <div className="px-3 py-2 text-xs text-gray-400 border-b border-gray-700 flex items-center justify-between gap-3">
-        <span>小地图预览（MAP/MPR）</span>
+        <span>{t('map.title')}</span>
         <span className="text-gray-500 truncate">
           {selectedFile.split('/').pop() || selectedFile}
           {previewData ? ` · ${previewData.previewRect.width} x ${previewData.previewRect.height}` : ''}
@@ -146,23 +148,23 @@ const MapViewer: React.FC<{
 
       <div className="flex-1 min-h-0 p-4 overflow-auto">
         {loading && (
-          <div className="text-sm text-gray-400">小地图加载中...</div>
+          <div className="text-sm text-gray-400">{t('map.loading')}</div>
         )}
 
         {!loading && error && (
           <div className="space-y-3">
             <div className="text-sm text-red-400">{error}</div>
             <div className="text-xs text-gray-500">
-              可切换到“文本”或“十六进制”视图进一步排查地图内容。
+              {t('map.errorHint')}
             </div>
           </div>
         )}
 
         {!loading && !error && noPreview && (
           <div className="space-y-2">
-            <div className="text-sm text-amber-300">该地图未包含 [Preview]/[PreviewPack] 预览数据。</div>
+            <div className="text-sm text-amber-300">{t('map.noPreview')}</div>
             <div className="text-xs text-gray-500">
-              可切换到“文本”视图检查地图节内容。
+              {t('map.noPreviewHint')}
             </div>
           </div>
         )}
@@ -180,10 +182,10 @@ const MapViewer: React.FC<{
             </div>
 
             <div className="text-xs text-gray-400 space-y-1">
-              <div>预览尺寸: {previewData.previewRect.width} x {previewData.previewRect.height}</div>
+              <div>{t('map.previewSize')}: {previewData.previewRect.width} x {previewData.previewRect.height}</div>
               <div>Map.Size: {formatRect(previewData.fullSize)}</div>
               <div>Map.LocalSize: {formatRect(previewData.localSize)}</div>
-              <div>出生点数量: {previewData.startingLocations.length}</div>
+              <div>{t('map.startingLocations')}: {previewData.startingLocations.length}</div>
             </div>
           </div>
         )}

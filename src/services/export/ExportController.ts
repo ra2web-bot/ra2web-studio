@@ -36,7 +36,7 @@ export class ExportController {
     const selected = this.resolveSelection(context)
     const mainVf = await MixParser.extractFile(selected.mixFile, selected.innerPath)
     if (!mainVf) {
-      throw new Error('无法读取当前文件，导出终止')
+      throw new Error('Cannot read current file, export aborted')
     }
 
     const mainBytes = mainVf.getBytes()
@@ -61,9 +61,9 @@ export class ExportController {
     }
 
     triggerBrowserDownload(mainBlob, selected.filename)
-    const proceed = window.confirm(
-      `检测到 ${associations.length} 个关联文件，是否继续导出关联文件？`,
-    )
+    const proceed = options.confirmAssociationExport
+      ? await options.confirmAssociationExport(associations.length)
+      : true
     if (!proceed) {
       return {
         mainFilePath: selected.selectedFile,

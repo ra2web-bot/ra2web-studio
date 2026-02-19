@@ -5,6 +5,8 @@ import type { MixFileInfo } from '../../services/MixParser'
 import type { ResourceContext } from '../../services/gameRes/ResourceContext'
 import type { RawAssociationExportMode } from '../../services/export/types'
 import { clamp } from '../../services/export/utils'
+import { useAppDialog } from '../common/AppDialogProvider'
+import { useLocale } from '../../i18n/LocaleContext'
 
 type MixFileData = { file: File; info: MixFileInfo }
 type ExportTab = 'raw' | 'static' | 'gif'
@@ -32,6 +34,8 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
   resourceContext,
   initialTab = 'raw',
 }) => {
+  const dialog = useAppDialog()
+  const { t } = useLocale()
   const extension = useMemo(
     () => selectedFile.split('.').pop()?.toLowerCase() ?? '',
     [selectedFile],
@@ -100,7 +104,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
         }
       } catch (e: any) {
         if (disposed) return
-        setError(e?.message || '读取 SHP 导出参数失败')
+        setError(e?.message || t('export.readShpFailed'))
       }
     }
     void loadShpMeta()
@@ -130,15 +134,23 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
       const resultData = await ExportController.exportRaw(context, {
         includeAssociations: promptAssociations,
         associationMode,
+        confirmAssociationExport: async (associationCount) => {
+          return dialog.confirm({
+            title: t('export.confirmAssociation'),
+            message: t('export.confirmAssociationMsg', { count: associationCount }),
+            confirmText: t('export.continueExport'),
+            cancelText: t('export.mainFileOnly'),
+          })
+        },
       })
       const associationCount = resultData.associationPaths.length
       const msg =
         associationCount > 0
-          ? `导出完成：主文件 + ${associationCount} 个关联文件`
-          : '导出完成：已下载主文件'
+          ? t('export.exportDoneWithAssoc', { count: associationCount })
+          : t('export.exportDoneMain')
       setResult(msg)
     } catch (e: any) {
-      setError(e?.message || '原始导出失败')
+      setError(e?.message || t('export.rawExportFailed'))
     } finally {
       setLoading(false)
     }
@@ -171,9 +183,9 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
         },
         jpegQuality: clamp(jpegQuality, 0, 1),
       })
-      setResult(`导出完成：${exportResult.filename}`)
+      setResult(t('export.exportDone', { detail: exportResult.filename }))
     } catch (e: any) {
-      setError(e?.message || '静态图导出失败')
+      setError(e?.message || t('export.staticExportFailed'))
     } finally {
       setLoading(false)
     }
@@ -204,9 +216,9 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
         frameDelayMs: Math.max(10, Math.round(gifDelayMs)),
         loopCount: clamp(gifLoopCount | 0, 0, 65535),
       })
-      setResult(`导出完成：${exportResult.filename}`)
+      setResult(t('export.exportDone', { detail: exportResult.filename }))
     } catch (e: any) {
-      setError(e?.message || 'GIF 导出失败')
+      setError(e?.message || t('export.gifExportFailed'))
     } finally {
       setLoading(false)
     }
@@ -219,7 +231,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
       <div className="w-full max-w-3xl bg-gray-900 border border-gray-700 rounded-lg shadow-2xl overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
           <div className="min-w-0">
-            <div className="text-sm text-gray-400">文件导出中心</div>
+            <div className="text-sm text-gray-400">{t('export.title')}</div>
             <div className="text-base font-semibold truncate">{selectedFile.split('/').pop()}</div>
           </div>
           <button
@@ -239,7 +251,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
             onClick={() => setActiveTab('raw')}
             disabled={loading}
           >
-            原始导出
+            {t('export.rawExport')}
           </button>
           <button
             type="button"
@@ -247,7 +259,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
             onClick={() => shpCapable && setActiveTab('static')}
             disabled={!shpCapable || loading}
           >
-            静态图导出
+            {t('export.staticExport')}
           </button>
           <button
             type="button"
@@ -255,10 +267,10 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
             onClick={() => shpCapable && setActiveTab('gif')}
             disabled={!shpCapable || loading}
           >
-            GIF 导出
+            {t('export.gifExport')}
           </button>
           {!shpCapable && (
-            <span className="ml-auto text-xs text-yellow-300">当前文件不是 SHP，仅支持原始导出</span>
+            <span className="ml-auto text-xs text-yellow-300">{t('export.shpOnlyHint')}</span>
           )}
         </div>
 
@@ -272,11 +284,11 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
                   onChange={(e) => setPromptAssociations(e.target.checked)}
                   disabled={loading}
                 />
-                导出后提示是否继续导出关联配对文件（PAL/HVA）
+                {t('export.associationPrompt')}
               </label>
               {promptAssociations && (
                 <div className="flex flex-wrap items-center gap-3 text-sm text-gray-300">
-                  <span>关联文件导出方式:</span>
+                  <span>{t('export.associationMode')}</span>
                   <label className="flex items-center gap-1">
                     <input
                       type="radio"
@@ -285,7 +297,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
                       onChange={() => setAssociationMode('separate')}
                       disabled={loading}
                     />
-                    逐个下载
+                    {t('export.associationSeparate')}
                   </label>
                   <label className="flex items-center gap-1">
                     <input
@@ -295,7 +307,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
                       onChange={() => setAssociationMode('zip')}
                       disabled={loading}
                     />
-                    ZIP 打包
+                    {t('export.associationZip')}
                   </label>
                 </div>
               )}
@@ -305,7 +317,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
                 onClick={() => void runRawExport()}
                 disabled={loading}
               >
-                {loading ? '导出中...' : '导出原始文件'}
+                {loading ? t('export.exporting') : t('export.exportRaw')}
               </button>
             </div>
           )}
@@ -313,26 +325,26 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
           {activeTab !== 'raw' && shpCapable && (
             <div className="space-y-3">
               <div className="text-sm text-gray-300">
-                SHP 帧数: <span className="text-white">{frameCount || '-'}</span>
+                {t('export.shpFrames')} <span className="text-white">{frameCount || '-'}</span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <label className="text-sm">
-                  帧模式
+                  {t('export.frameMode')}
                   <select
                     className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-1"
                     value={frameMode}
                     onChange={(e) => setFrameMode(e.target.value as FrameMode)}
                     disabled={loading}
                   >
-                    <option value="single">单帧</option>
-                    <option value="range">连续帧段</option>
+                    <option value="single">{t('export.singleFrame')}</option>
+                    <option value="range">{t('export.rangeFrames')}</option>
                   </select>
                 </label>
 
                 {frameMode === 'single' ? (
                   <label className="text-sm">
-                    帧索引
+                    {t('export.frameIndex')}
                     <input
                       type="number"
                       className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-1"
@@ -346,7 +358,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
                 ) : (
                   <div className="grid grid-cols-2 gap-2">
                     <label className="text-sm">
-                      起始帧
+                      {t('export.startFrame')}
                       <input
                         type="number"
                         className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-1"
@@ -358,7 +370,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
                       />
                     </label>
                     <label className="text-sm">
-                      结束帧
+                      {t('export.endFrame')}
                       <input
                         type="number"
                         className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-1"
@@ -373,28 +385,28 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
                 )}
 
                 <label className="text-sm">
-                  调色板模式
+                  {t('export.paletteMode')}
                   <select
                     className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-1"
                     value={paletteMode}
                     onChange={(e) => setPaletteMode(e.target.value as PaletteMode)}
                     disabled={loading}
                   >
-                    <option value="auto">自动规则</option>
-                    <option value="manual">手动指定</option>
+                    <option value="auto">{t('export.paletteAuto')}</option>
+                    <option value="manual">{t('export.paletteManual')}</option>
                   </select>
                 </label>
 
                 {paletteMode === 'manual' && (
                   <label className="text-sm">
-                    手动调色板
+                    {t('export.manualPalette')}
                     <select
                       className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-1"
                       value={manualPalettePath}
                       onChange={(e) => setManualPalettePath(e.target.value)}
                       disabled={loading}
                     >
-                      <option value="">请选择...</option>
+                      <option value="">{t('export.selectPalette')}</option>
                       {paletteList.map((path) => (
                         <option key={path} value={path}>
                           {path}
@@ -405,21 +417,21 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
                 )}
 
                 <label className="text-sm">
-                  透明策略
+                  {t('export.transparency')}
                   <select
                     className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-1"
                     value={transparencyMode}
                     onChange={(e) => setTransparencyMode(e.target.value as TransparencyMode)}
                     disabled={loading}
                   >
-                    <option value="index">按索引透明</option>
-                    <option value="opaque">不透明背景</option>
+                    <option value="index">{t('export.transparentIndex')}</option>
+                    <option value="opaque">{t('export.opaqueBg')}</option>
                   </select>
                 </label>
 
                 {transparencyMode === 'index' ? (
                   <label className="text-sm">
-                    透明索引
+                    {t('export.transparentIndexNum')}
                     <input
                       type="number"
                       className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-1"
@@ -432,7 +444,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
                   </label>
                 ) : (
                   <label className="text-sm">
-                    背景色
+                    {t('export.backgroundColor')}
                     <input
                       type="color"
                       className="mt-1 w-full h-9 bg-gray-800 border border-gray-700 rounded px-1"
@@ -447,7 +459,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
               {activeTab === 'static' && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <label className="text-sm">
-                    导出格式
+                    {t('export.exportFormat')}
                     <select
                       className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-1"
                       value={staticFormat}
@@ -460,20 +472,20 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
                   </label>
 
                   <label className="text-sm">
-                    拼接布局
+                    {t('export.layoutMode')}
                     <select
                       className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-1"
                       value={layoutMode}
                       onChange={(e) => setLayoutMode(e.target.value as LayoutMode)}
                       disabled={loading}
                     >
-                      <option value="grid">多行网格</option>
-                      <option value="single-column">单列</option>
+                      <option value="grid">{t('export.gridLayout')}</option>
+                      <option value="single-column">{t('export.singleColumn')}</option>
                     </select>
                   </label>
 
                   <label className="text-sm">
-                    网格列数
+                    {t('export.gridColumns')}
                     <input
                       type="number"
                       className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-1"
@@ -487,7 +499,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
 
                   {staticFormat === 'jpg' && (
                     <label className="text-sm md:col-span-3">
-                      JPG 质量（0-1）
+                      {t('export.jpegQuality')}
                       <input
                         type="number"
                         step={0.01}
@@ -506,7 +518,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
               {activeTab === 'gif' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <label className="text-sm">
-                    帧间隔（毫秒）
+                    {t('export.frameDelay')}
                     <input
                       type="number"
                       min={10}
@@ -517,7 +529,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
                     />
                   </label>
                   <label className="text-sm">
-                    循环次数（0=无限）
+                    {t('export.loopCount')}
                     <input
                       type="number"
                       min={0}
@@ -537,7 +549,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
                 onClick={() => void (activeTab === 'static' ? runStaticExport() : runGifExport())}
                 disabled={loading || frameCount <= 0}
               >
-                {loading ? '导出中...' : activeTab === 'static' ? '导出静态图' : '导出 GIF'}
+                {loading ? t('export.exporting') : activeTab === 'static' ? t('export.exportStatic') : t('export.exportGif')}
               </button>
             </div>
           )}

@@ -32,13 +32,13 @@ export function splitSelectedFilePath(
 ): ResolvedSelectedFile {
   const slash = selectedFile.indexOf('/')
   if (slash <= 0 || slash >= selectedFile.length - 1) {
-    throw new Error('当前文件路径无效，无法导出')
+    throw new Error('Invalid file path, cannot export')
   }
   const mixName = selectedFile.substring(0, slash)
   const innerPath = selectedFile.substring(slash + 1)
   const mix = mixFiles.find((item) => item.info.name === mixName)
   if (!mix) {
-    throw new Error(`未找到所属 MIX：${mixName}`)
+    throw new Error(`MIX not found: ${mixName}`)
   }
   return {
     selectedFile,
@@ -94,7 +94,7 @@ export function canvasToBlob(
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (!blob) {
-        reject(new Error('画布导出失败：浏览器未返回 Blob'))
+        reject(new Error('Canvas export failed: browser did not return Blob'))
         return
       }
       resolve(blob)

@@ -21,7 +21,7 @@ function bytesToHex(bytes: Uint8Array): string {
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const subtle = globalThis.crypto?.subtle
   if (!subtle) {
-    throw new Error('当前环境不支持 crypto.subtle，无法生成稳定缓存键')
+    throw new Error('crypto.subtle not supported, cannot generate cache key')
   }
   const stableBuffer = new ArrayBuffer(bytes.byteLength)
   new Uint8Array(stableBuffer).set(bytes)

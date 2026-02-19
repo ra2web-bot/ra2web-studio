@@ -11,6 +11,15 @@ import { MixFile as MixFileDataStream } from '../data/MixFile'
 import { GameResBootstrap } from '../services/gameRes/GameResBootstrap'
 import { FileSystemUtil } from '../services/gameRes/FileSystemUtil'
 import type { ResourceContext } from '../services/gameRes/ResourceContext'
+import { normalizeResourceFilename } from '../services/gameRes/patterns'
+import {
+  MixArchiveBuilder,
+  type MixArchiveBuilderEntry,
+  type MixArchiveLmdSummary,
+} from '../services/mixEdit/MixArchiveBuilder'
+import { bytesToBlob, triggerBrowserDownload } from '../services/export/utils'
+import { useAppDialog } from './common/AppDialogProvider'
+import { useLocale } from '../i18n/LocaleContext'
 import {
   createInitialGameResImportSteps,
   GAME_RES_IMPORT_STAGE_ORDER,
@@ -23,6 +32,23 @@ export interface MixFileData {
 }
 
 type BrowserMode = 'workspace' | 'repository'
+type MixContainerNode = { name: string; info: MixFileInfo; fileObj: File | VirtualFile }
+type RestorableNavigationTarget = { stackNames: string[]; selectedLeafName?: string }
+type LayerLmdSummary = MixArchiveLmdSummary & { layerName: string }
+
+function normalizeMixEntryName(name: string): string {
+  return name.replace(/\\/g, '/').trim().toLowerCase()
+}
+
+function sameMixEntryName(a: string, b: string): boolean {
+  return normalizeMixEntryName(a) === normalizeMixEntryName(b)
+}
+
+function cloneBytes(bytes: Uint8Array): Uint8Array {
+  const copy = new Uint8Array(bytes.length)
+  copy.set(bytes)
+  return copy
+}
 
 const NON_ERROR_STAGE_ORDER = GAME_RES_IMPORT_STAGE_ORDER.filter((stage) => stage !== 'error')
 
@@ -60,6 +86,8 @@ function applyProgressEventToSteps(
 }
 
 const MixEditor: React.FC = () => {
+  const dialog = useAppDialog()
+  const { t } = useLocale()
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [mixFiles, setMixFiles] = useState<MixFileData[]>([])
   const [browserMode, setBrowserMode] = useState<BrowserMode>('workspace')
@@ -75,7 +103,7 @@ const MixEditor: React.FC = () => {
   const [resourceContext, setResourceContext] = useState<ResourceContext | null>(null)
   const [metadataDrawerOpen, setMetadataDrawerOpen] = useState(false)
   // 导航栈：从顶层 MIX 到当前容器（可能是子 MIX）
-  const [navStack, setNavStack] = useState<Array<{ name: string; info: MixFileInfo; fileObj: File | VirtualFile }>>([])
+  const [navStack, setNavStack] = useState<MixContainerNode[]>([])
 
   const initializeSelection = useCallback((nextMixFiles: MixFileData[]) => {
     if (!nextMixFiles.length) {
@@ -107,9 +135,100 @@ const MixEditor: React.FC = () => {
     setProgressMessage(event.message)
   }, [])
 
-  const reloadResourceContext = useCallback(async () => {
+  const createMixReaderFromFileObj = useCallback(async (fileObj: File | VirtualFile) => {
+    if (fileObj instanceof File) {
+      const ab = await fileObj.arrayBuffer()
+      return new MixFileDataStream(new DataStream(ab))
+    }
+    const ds = fileObj.stream as DataStream
+    ds.seek(0)
+    return new MixFileDataStream(ds)
+  }, [])
+
+  const openContainerEntry = useCallback(
+    async (container: MixContainerNode, entry: MixFileInfo['files'][number]): Promise<VirtualFile | null> => {
+      const mix = await createMixReaderFromFileObj(container.fileObj)
+      const hash = entry.hash >>> 0
+      if (mix.containsId(hash)) return mix.openById(hash, entry.filename)
+      if (mix.containsFile(entry.filename)) return mix.openFile(entry.filename)
+      return null
+    },
+    [createMixReaderFromFileObj],
+  )
+
+  const readContainerEntries = useCallback(
+    async (container: MixContainerNode): Promise<MixArchiveBuilderEntry[]> => {
+      const mix = await createMixReaderFromFileObj(container.fileObj)
+      const entries: MixArchiveBuilderEntry[] = []
+      for (const entry of container.info.files) {
+        const hash = entry.hash >>> 0
+        let vf: VirtualFile | null = null
+        if (mix.containsId(hash)) {
+          vf = mix.openById(hash, entry.filename)
+        } else if (mix.containsFile(entry.filename)) {
+          vf = mix.openFile(entry.filename)
+        }
+        if (!vf) {
+          throw new Error(`Cannot read container entry: ${entry.filename}`)
+        }
+        entries.push({
+          filename: entry.filename,
+          hash,
+          bytes: cloneBytes(vf.getBytes()),
+        })
+      }
+      return entries
+    },
+    [createMixReaderFromFileObj],
+  )
+
+  const restoreNavigation = useCallback(
+    async (nextMixFiles: MixFileData[], target?: RestorableNavigationTarget): Promise<boolean> => {
+      if (!target || !target.stackNames.length) return false
+      const topMix = nextMixFiles.find((mix) => sameMixEntryName(mix.info.name, target.stackNames[0]))
+      if (!topMix) return false
+
+      const restoredStack: MixContainerNode[] = [
+        { name: topMix.info.name, info: topMix.info, fileObj: topMix.file },
+      ]
+
+      for (let i = 1; i < target.stackNames.length; i++) {
+        const expectedName = target.stackNames[i]
+        const parent = restoredStack[restoredStack.length - 1]
+        const childEntry = parent.info.files.find((entry) => sameMixEntryName(entry.filename, expectedName))
+        if (!childEntry) break
+        const childVf = await openContainerEntry(parent, childEntry)
+        if (!childVf) break
+        try {
+          const childInfo = await MixParser.parseVirtualFile(childVf, childEntry.filename)
+          restoredStack.push({
+            name: childEntry.filename,
+            info: childInfo,
+            fileObj: childVf,
+          })
+        } catch {
+          break
+        }
+      }
+
+      const leaf = restoredStack[restoredStack.length - 1]
+      const prefix = restoredStack.map((item) => item.name).join('/')
+      const preferredLeafEntry = target.selectedLeafName
+        ? leaf.info.files.find((entry) => sameMixEntryName(entry.filename, target.selectedLeafName as string))
+        : null
+      const selectedLeafEntry = preferredLeafEntry ?? leaf.info.files[0]
+
+      setActiveTopMixName(restoredStack[0].name)
+      setNavStack(restoredStack)
+      setSelectedFile(selectedLeafEntry ? `${prefix}/${selectedLeafEntry.filename}` : null)
+      return true
+    },
+    [openContainerEntry],
+  )
+
+  const reloadResourceContext = useCallback(async (restoreTarget?: RestorableNavigationTarget) => {
     setLoading(true)
-    setProgressMessage('正在读取浏览器资源...')
+    setProgressMessage(t('mixEditor.readingResources'))
     try {
       const config = GameResBootstrap.loadConfig()
       const ctx = await GameResBootstrap.loadContext(config.activeModName)
@@ -119,7 +238,10 @@ const MixEditor: React.FC = () => {
       const nextMixFiles = ctx.toMixFileData()
       setMixFiles(nextMixFiles)
       if (ctx.readiness.ready) {
-        initializeSelection(nextMixFiles)
+        const restored = await restoreNavigation(nextMixFiles, restoreTarget)
+        if (!restored) {
+          initializeSelection(nextMixFiles)
+        }
       } else {
         setActiveTopMixName(null)
         setNavStack([])
@@ -129,7 +251,7 @@ const MixEditor: React.FC = () => {
       setProgressMessage('')
     } catch (error) {
       console.error('Failed to load resource context:', error)
-      setProgressMessage('读取资源失败')
+      setProgressMessage(t('mixEditor.readResourcesFailed'))
       setResourceReady(false)
       setMissingRequiredFiles(['ra2.mix', 'language.mix', 'multi.mix'])
       setMixFiles([])
@@ -140,7 +262,7 @@ const MixEditor: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }, [initializeSelection])
+  }, [initializeSelection, restoreNavigation, t])
 
   useEffect(() => {
     reloadResourceContext()
@@ -148,10 +270,10 @@ const MixEditor: React.FC = () => {
 
   const handleReimportBaseDirectory = useCallback(async () => {
     setLoading(true)
-    resetImportProgress('准备重新导入基座目录...')
+    resetImportProgress(t('importProgress.prepareReimportDir'))
     try {
       if (!FileSystemUtil.isOpfsSupported()) {
-        alert('当前浏览器不支持持久化文件系统（OPFS），无法导入本体资源。')
+        await dialog.info(t('mixEditor.opfsNotSupported'))
         return
       }
       const dirHandle = await FileSystemUtil.showDirectoryPicker()
@@ -161,28 +283,28 @@ const MixEditor: React.FC = () => {
         handleImportProgressEvent,
       )
       if (result.errors.length > 0) {
-        alert(`基座目录导入异常：\n${result.errors.slice(0, 8).join('\n')}`)
+        await dialog.info(t('mixEditor.baseDirImportError', { errors: result.errors.slice(0, 8).join('\n') }))
       }
       await reloadResourceContext()
     } catch (e: any) {
       if (e?.name === 'AbortError') return
       handleImportProgressEvent({
         stage: 'error',
-        stageLabel: '导入失败',
-        message: e?.message || '重新导入基座目录失败',
-        errorMessage: e?.message || '重新导入基座目录失败',
+        stageLabel: t('importProgress.importFailed'),
+        message: e?.message || t('mixEditor.reimportBaseDirFailed'),
+        errorMessage: e?.message || t('mixEditor.reimportBaseDirFailed'),
       })
-      alert(e?.message || '重新导入基座目录失败')
+      await dialog.info(e?.message || t('mixEditor.reimportBaseDirFailed'))
     } finally {
       setLoading(false)
       setProgressMessage('')
     }
-  }, [reloadResourceContext, handleImportProgressEvent, resetImportProgress])
+  }, [reloadResourceContext, handleImportProgressEvent, resetImportProgress, dialog, t])
 
   const handleReimportBaseArchives = useCallback(async (files: File[]) => {
     if (!files.length) return
     setLoading(true)
-    resetImportProgress('准备重新导入基座归档...')
+    resetImportProgress(t('importProgress.prepareReimportArchive'))
     try {
       const result = await GameResBootstrap.reimportBaseFromArchives(
         files,
@@ -190,27 +312,27 @@ const MixEditor: React.FC = () => {
         handleImportProgressEvent,
       )
       if (result.errors.length > 0) {
-        alert(`基座归档导入异常：\n${result.errors.slice(0, 8).join('\n')}`)
+        await dialog.info(t('mixEditor.baseArchiveImportError', { errors: result.errors.slice(0, 8).join('\n') }))
       }
       await reloadResourceContext()
     } catch (e: any) {
       handleImportProgressEvent({
         stage: 'error',
-        stageLabel: '导入失败',
-        message: e?.message || '重新导入基座归档失败',
-        errorMessage: e?.message || '重新导入基座归档失败',
+        stageLabel: t('importProgress.importFailed'),
+        message: e?.message || t('mixEditor.reimportBaseArchiveFailed'),
+        errorMessage: e?.message || t('mixEditor.reimportBaseArchiveFailed'),
       })
-      alert(e?.message || '重新导入基座归档失败')
+      await dialog.info(e?.message || t('mixEditor.reimportBaseArchiveFailed'))
     } finally {
       setLoading(false)
       setProgressMessage('')
     }
-  }, [reloadResourceContext, handleImportProgressEvent, resetImportProgress])
+  }, [reloadResourceContext, handleImportProgressEvent, resetImportProgress, dialog, t])
 
   const handleImportPatchMixes = useCallback(async (files: File[]) => {
     if (!files.length) return
     setLoading(true)
-    resetImportProgress('准备导入补丁资源...')
+    resetImportProgress(t('importProgress.prepareImportPatch'))
     try {
       const result = await GameResBootstrap.importPatchFiles(
         files,
@@ -218,36 +340,41 @@ const MixEditor: React.FC = () => {
         handleImportProgressEvent,
       )
       if (result.errors.length > 0) {
-        alert(`补丁导入异常：\n${result.errors.slice(0, 8).join('\n')}`)
+        await dialog.info(t('mixEditor.patchImportError', { errors: result.errors.slice(0, 8).join('\n') }))
       }
       await reloadResourceContext()
     } catch (e: any) {
       handleImportProgressEvent({
         stage: 'error',
-        stageLabel: '导入失败',
-        message: e?.message || '导入补丁失败',
-        errorMessage: e?.message || '导入补丁失败',
+        stageLabel: t('importProgress.importFailed'),
+        message: e?.message || t('mixEditor.importPatchFailed'),
+        errorMessage: e?.message || t('mixEditor.importPatchFailed'),
       })
-      alert(e?.message || '导入补丁失败')
+      await dialog.info(e?.message || t('mixEditor.importPatchFailed'))
     } finally {
       setLoading(false)
       setProgressMessage('')
     }
-  }, [reloadResourceContext, handleImportProgressEvent, resetImportProgress])
+  }, [reloadResourceContext, handleImportProgressEvent, resetImportProgress, dialog, t])
 
   const handleClearNonBaseResources = useCallback(async () => {
-    if (!confirm('确定清空补丁/模组资源吗？此操作不会删除基座文件。')) return
+    const confirmed = await dialog.confirmDanger({
+      title: t('mixEditor.confirmClearPatches'),
+      message: t('mixEditor.confirmClearPatchesMsg'),
+      confirmText: t('mixEditor.confirmClear'),
+    })
+    if (!confirmed) return
     setLoading(true)
     try {
       await GameResBootstrap.clearNonBaseResources(resourceContext?.activeModName ?? null)
       await reloadResourceContext()
     } catch (e: any) {
-      alert(e?.message || '清空补丁/模组资源失败')
+      await dialog.info(e?.message || t('mixEditor.clearPatchesFailed'))
     } finally {
       setLoading(false)
       setProgressMessage('')
     }
-  }, [resourceContext, reloadResourceContext])
+  }, [resourceContext, reloadResourceContext, dialog, t])
 
   const setWorkspaceMix = useCallback((mixName: string, selectFirstFile: boolean) => {
     const mix = mixFiles.find((m) => m.info.name === mixName)
@@ -400,32 +527,228 @@ const MixEditor: React.FC = () => {
     void handleDrillDown(selectedLeafName)
   }, [canEnterCurrentMix, selectedLeafName, handleDrillDown])
 
-  const handleExport = useCallback(async () => {
-    try {
-      if (!selectedFile) return
-      const slash = selectedFile.indexOf('/')
-      if (slash <= 0) return
-      const mixName = selectedFile.substring(0, slash)
-      const inner = selectedFile.substring(slash + 1)
-      const mix = mixFiles.find(m => m.info.name === mixName)
-      if (!mix) return
-      const vf = await MixParser.extractFile(mix.file, inner)
-      if (!vf) return
-      const bytes = vf.getBytes()
-      const ab = bytes.buffer as ArrayBuffer
-      const blob = new Blob([ab.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)], { type: 'application/octet-stream' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = inner
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-    } catch (err) {
-      console.error('Export failed:', err)
+  const readFileObjBytes = useCallback(async (fileObj: File | VirtualFile): Promise<Uint8Array> => {
+    if (fileObj instanceof File) {
+      return new Uint8Array(await fileObj.arrayBuffer())
     }
-  }, [selectedFile, mixFiles])
+    return cloneBytes(fileObj.getBytes())
+  }, [])
+
+  const resolveTopArchiveSource = useCallback(() => {
+    if (!resourceContext || navStack.length === 0) return null
+    const topNode = navStack[0]
+    if (topNode.fileObj instanceof File) {
+      const byReference = resourceContext.archives.find((item) => item.file === topNode.fileObj)
+      if (byReference) {
+        return {
+          bucket: byReference.bucket,
+          modName: byReference.modName ?? null,
+          topFilename: byReference.info.name,
+        }
+      }
+    }
+    const byName = resourceContext.archives.find((item) => sameMixEntryName(item.info.name, topNode.name))
+    if (!byName) return null
+    return {
+      bucket: byName.bucket,
+      modName: byName.modName ?? null,
+      topFilename: byName.info.name,
+    }
+  }, [resourceContext, navStack])
+
+  const rebuildTopMixBytesFromCurrent = useCallback(async (
+    currentMixBytes: Uint8Array,
+  ): Promise<{ topBytes: Uint8Array; parentLmdSummaries: LayerLmdSummary[] }> => {
+    if (!navStack.length) {
+      throw new Error('No MIX container to write back')
+    }
+    const parentLmdSummaries: LayerLmdSummary[] = []
+    let replacementBytes = cloneBytes(currentMixBytes)
+    let replacementName = navStack[navStack.length - 1].name
+    for (let depth = navStack.length - 2; depth >= 0; depth--) {
+      const parent = navStack[depth]
+      const parentEntries = await readContainerEntries(parent)
+      const targetIndex = parentEntries.findIndex((entry) => sameMixEntryName(entry.filename, replacementName))
+      if (targetIndex < 0) {
+        throw new Error(`Cannot locate sub-container in parent MIX: ${replacementName}`)
+      }
+      parentEntries[targetIndex] = {
+        ...parentEntries[targetIndex],
+        bytes: replacementBytes,
+      }
+      const parentLmd = MixArchiveBuilder.upsertLocalMixDatabaseWithSummary(parentEntries)
+      parentLmdSummaries.push({
+        layerName: parent.name,
+        ...parentLmd.summary,
+      })
+      replacementBytes = MixArchiveBuilder.build(parentLmd.entries)
+      replacementName = parent.name
+    }
+    return { topBytes: replacementBytes, parentLmdSummaries }
+  }, [navStack, readContainerEntries])
+
+  const handleImportFilesToCurrentMix = useCallback(async (files: File[]) => {
+    if (!files.length || !navStack.length) return
+    const currentNode = navStack[navStack.length - 1]
+    setLoading(true)
+    setProgressMessage(t('mixEditor.importingFiles'))
+    try {
+      const currentEntries = await readContainerEntries(currentNode)
+      const indexByName = new Map<string, number>()
+      for (let i = 0; i < currentEntries.length; i++) {
+        indexByName.set(normalizeMixEntryName(currentEntries[i].filename), i)
+      }
+
+      let importedCount = 0
+      let skippedCount = 0
+      for (const file of files) {
+        const normalizedName = normalizeResourceFilename(file.name)
+        if (!normalizedName) {
+          skippedCount++
+          continue
+        }
+        const key = normalizeMixEntryName(normalizedName)
+        const bytes = cloneBytes(new Uint8Array(await file.arrayBuffer()))
+        const existedIndex = indexByName.get(key)
+        if (existedIndex != null) {
+          const existedName = currentEntries[existedIndex].filename
+          const replaceConfirmed = await dialog.confirmDanger({
+            title: t('mixEditor.confirmReplace'),
+            message: t('mixEditor.confirmReplaceMsg', { name: existedName }),
+            confirmText: t('common.replace'),
+          })
+          if (!replaceConfirmed) {
+            skippedCount++
+            continue
+          }
+          currentEntries[existedIndex] = {
+            ...currentEntries[existedIndex],
+            filename: normalizedName,
+            bytes,
+          }
+          importedCount++
+          continue
+        }
+
+        const nextHash = MixArchiveBuilder.hashFilename(normalizedName)
+        const hashConflictIndex = currentEntries.findIndex((entry) => (entry.hash ?? 0) === nextHash)
+        if (hashConflictIndex >= 0) {
+          const conflictName = currentEntries[hashConflictIndex].filename
+          const hashConflictConfirmed = await dialog.confirmDanger({
+            title: t('mixEditor.confirmHashConflict'),
+            message: t('mixEditor.confirmHashConflictMsg', { name: normalizedName, conflict: conflictName }),
+            confirmText: t('common.replace'),
+          })
+          if (!hashConflictConfirmed) {
+            skippedCount++
+            continue
+          }
+          currentEntries[hashConflictIndex] = {
+            ...currentEntries[hashConflictIndex],
+            filename: normalizedName,
+            hash: nextHash,
+            bytes,
+          }
+          indexByName.set(key, hashConflictIndex)
+          importedCount++
+          continue
+        }
+
+        currentEntries.push({
+          filename: normalizedName,
+          hash: nextHash,
+          bytes,
+        })
+        indexByName.set(key, currentEntries.length - 1)
+        importedCount++
+      }
+
+      if (importedCount <= 0) {
+        await dialog.info(t('mixEditor.noFileImported'))
+        return
+      }
+
+      const currentLmd = MixArchiveBuilder.upsertLocalMixDatabaseWithSummary(currentEntries)
+      const rebuiltCurrentBytes = MixArchiveBuilder.build(currentLmd.entries)
+      const rebuiltTop = await rebuildTopMixBytesFromCurrent(rebuiltCurrentBytes)
+      const source = resolveTopArchiveSource()
+      if (!source) {
+        throw new Error('Cannot locate top MIX source bucket')
+      }
+
+      const topFilename = source.topFilename
+      const persistedBuffer = new ArrayBuffer(rebuiltTop.topBytes.length)
+      new Uint8Array(persistedBuffer).set(rebuiltTop.topBytes)
+      const topFile = new File([persistedBuffer], topFilename, { type: 'application/octet-stream' })
+      await FileSystemUtil.writeImportedFile(source.bucket, topFile, source.modName, topFilename)
+      await reloadResourceContext({
+        stackNames: navStack.map((node) => node.name),
+        selectedLeafName,
+      })
+
+      const lmdLines: string[] = []
+      const currentLmdAction = currentLmd.summary.replacedExisting ? t('mixEditor.lmdReplaced') : t('mixEditor.lmdAdded')
+      lmdLines.push(
+        `- ${t('mixEditor.lmdCurrentLayer', { name: currentNode.name, action: currentLmdAction, count: String(currentLmd.summary.fileNameCount) })}`,
+      )
+      if (currentLmd.summary.skippedByHashMismatch > 0) {
+        lmdLines.push(`  ${t('mixEditor.lmdSkippedHash', { count: String(currentLmd.summary.skippedByHashMismatch) })}`)
+      }
+      for (const parentSummary of rebuiltTop.parentLmdSummaries) {
+        const parentAction = parentSummary.replacedExisting ? t('mixEditor.lmdReplaced') : t('mixEditor.lmdAdded')
+        lmdLines.push(
+          `- ${t('mixEditor.lmdParentLayer', { name: parentSummary.layerName, action: parentAction, count: String(parentSummary.fileNameCount) })}`,
+        )
+        if (parentSummary.skippedByHashMismatch > 0) {
+          lmdLines.push(`  ${t('mixEditor.lmdSkippedHash', { count: String(parentSummary.skippedByHashMismatch) })}`)
+        }
+      }
+
+      const importSummary = skippedCount > 0
+        ? t('mixEditor.importSummaryWithSkipped', { imported: String(importedCount), skipped: String(skippedCount) })
+        : t('mixEditor.importSummaryDone', { imported: String(importedCount) })
+      await dialog.info({
+        title: t('mixEditor.importComplete'),
+        message: `${importSummary}\n\n${t('mixEditor.lmdUpdateSummary')}\n${lmdLines.join('\n')}`,
+      })
+    } catch (err: any) {
+      console.error('Import to current MIX failed:', err)
+      await dialog.info(err?.message || t('mixEditor.importFailed'))
+    } finally {
+      setLoading(false)
+      setProgressMessage('')
+    }
+  }, [
+    navStack,
+    readContainerEntries,
+    rebuildTopMixBytesFromCurrent,
+    reloadResourceContext,
+    resolveTopArchiveSource,
+    selectedLeafName,
+    dialog,
+    t,
+  ])
+
+  const handleExportTopMix = useCallback(async () => {
+    if (!navStack.length) return
+    try {
+      const topNode = navStack[0]
+      const bytes = await readFileObjBytes(topNode.fileObj)
+      triggerBrowserDownload(bytesToBlob(bytes, 'application/octet-stream'), topNode.name)
+    } catch (err) {
+      console.error('Export top MIX failed:', err)
+    }
+  }, [navStack, readFileObjBytes])
+
+  const handleExportCurrentMix = useCallback(async () => {
+    if (!currentContainer) return
+    try {
+      const bytes = await readFileObjBytes(currentContainer.fileObj)
+      triggerBrowserDownload(bytesToBlob(bytes, 'application/octet-stream'), currentContainer.name)
+    } catch (err) {
+      console.error('Export current MIX failed:', err)
+    }
+  }, [currentContainer, readFileObjBytes])
 
   return (
     <div className="h-full flex flex-col">
@@ -434,8 +757,9 @@ const MixEditor: React.FC = () => {
         <Toolbar
           mixFiles={mixFiles.map(mix => mix.file.name)}
           loading={loading}
-          selectedFile={selectedFile}
-          onExport={handleExport}
+          onExportTopMix={handleExportTopMix}
+          onExportCurrentMix={handleExportCurrentMix}
+          onImportFilesToCurrentMix={handleImportFilesToCurrentMix}
           onReimportBaseDirectory={handleReimportBaseDirectory}
           onReimportBaseArchives={handleReimportBaseArchives}
           onImportPatchMixes={handleImportPatchMixes}
@@ -443,7 +767,7 @@ const MixEditor: React.FC = () => {
           resourceReady={resourceReady}
           resourceSummary={
             progressMessage ||
-            `资源就绪：${mixFiles.length} 个MIX（补丁可继续导入）`
+            t('mixEditor.resourceReadyDetail', { count: mixFiles.length })
           }
         />
       )}
@@ -452,12 +776,12 @@ const MixEditor: React.FC = () => {
       {!resourceReady ? (
         <div className="flex-1 flex items-center justify-center p-8">
           <div className="max-w-2xl w-full bg-gray-800 border border-gray-700 rounded-lg p-6">
-            <h2 className="text-xl font-semibold mb-3">导入游戏资源</h2>
+            <h2 className="text-xl font-semibold mb-3">{t('mixEditor.importGameRes')}</h2>
             <p className="text-gray-300 text-sm leading-6">
-              先导入游戏目录或归档文件，建立本地资源基座后再进入编辑界面。
+              {t('mixEditor.importHint')}
             </p>
             <div className="mt-4 text-sm text-yellow-300">
-              当前缺少：{missingRequiredFiles.join(', ') || '未知（请重新导入）'}
+              {t('mixEditor.missingFiles', { files: missingRequiredFiles.join(', ') || t('mixEditor.unknownMissing') })}
             </div>
             <div className="mt-5 flex flex-wrap gap-3">
               <button
@@ -475,14 +799,14 @@ const MixEditor: React.FC = () => {
                 }}
                 disabled={loading}
               >
-                选择归档（tar.gz/exe/7z）文件
+                {t('mixEditor.selectArchive')}
               </button>
               <button
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm"
                 onClick={() => handleReimportBaseDirectory()}
                 disabled={loading}
               >
-                选择游戏目录
+                {t('mixEditor.selectGameDir')}
               </button>
             </div>
             <ImportProgressPanel
@@ -490,7 +814,7 @@ const MixEditor: React.FC = () => {
               message={importProgressEvent?.message}
               currentItem={importProgressEvent?.currentItem}
               percentage={importProgressEvent?.percentage}
-              fallbackMessage={loading ? progressMessage : '请选择游戏目录或归档开始导入。'}
+              fallbackMessage={loading ? progressMessage : t('mixEditor.selectToStart')}
             />
           </div>
         </div>
@@ -523,7 +847,7 @@ const MixEditor: React.FC = () => {
               <button
                 type="button"
                 className="absolute inset-0 bg-black/25 z-10"
-                aria-label="关闭元数据详情抽屉"
+                aria-label={t('mixEditor.closeMetadataAria')}
                 onClick={handleCloseMetadataDrawer}
               />
             )}
@@ -545,13 +869,13 @@ const MixEditor: React.FC = () => {
             >
               <div className="h-full flex flex-col">
                 <div className="px-3 py-2 border-b border-gray-700 flex items-center justify-between">
-                  <span className="text-sm text-gray-300">元数据详情</span>
+                  <span className="text-sm text-gray-300">{t('mixEditor.metadataDetail')}</span>
                   <button
                     type="button"
                     className="px-2 py-1 text-xs rounded bg-gray-700 hover:bg-gray-600 text-gray-200"
                     onClick={handleCloseMetadataDrawer}
                   >
-                    关闭
+                    {t('common.close')}
                   </button>
                 </div>
                 <div className="flex-1 min-h-0">
@@ -568,10 +892,10 @@ const MixEditor: React.FC = () => {
 
       {/* 底部状态栏 */}
       <div className="h-8 bg-gray-800 border-t border-gray-700 flex items-center px-4 text-sm text-gray-400">
-        RA2Web Studio - 王二火大 Mix文件编辑器
+        {t('mixEditor.appTitle')}
         {resourceReady && mixFiles.length > 0 && (
           <span className="ml-4">
-            已加载 {mixFiles.length} 个MIX文件，{mixFiles.reduce((sum, mix) => sum + mix.info.files.length, 0)} 个文件
+            {t('mixEditor.mixCount', { mixCount: mixFiles.length, fileCount: mixFiles.reduce((sum, mix) => sum + mix.info.files.length, 0) })}
           </span>
         )}
       </div>

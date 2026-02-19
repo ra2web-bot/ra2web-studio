@@ -11,6 +11,7 @@ import SearchableSelect from '../common/SearchableSelect'
 import { usePaletteHotkeys } from './usePaletteHotkeys'
 import type { PaletteSelectionInfo, Rgb } from '../../services/palette/PaletteTypes'
 import type { ResourceContext } from '../../services/gameRes/ResourceContext'
+import { useLocale } from '../../i18n/LocaleContext'
 
 type MixFileData = { file: File; info: MixFileInfo }
 type HvaSelectionInfo = {
@@ -115,6 +116,7 @@ const VxlViewer3D: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; res
   mixFiles,
   resourceContext,
 }) => {
+  const { t } = useLocale()
   const mountRef = useRef<HTMLDivElement>(null)
   const applyHvaFrameRef = useRef<(frame: number) => void>(() => {})
   const [loading, setLoading] = useState(false)
@@ -195,7 +197,7 @@ const VxlViewer3D: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; res
           } else {
             selectedInfo = {
               source: 'fallback-grayscale',
-              reason: `调色板加载失败（${decision.resolvedPalettePath}），回退灰度`,
+              reason: t('viewer.paletteLoadFailed', { path: decision.resolvedPalettePath }),
               resolvedPath: decision.resolvedPalettePath,
             }
           }
@@ -206,7 +208,7 @@ const VxlViewer3D: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; res
           } else {
             selectedInfo = {
               source: 'fallback-grayscale',
-              reason: '内嵌调色板无效，回退灰度',
+              reason: t('viewer.embeddedPaletteInvalid'),
               resolvedPath: null,
             }
           }
@@ -223,7 +225,7 @@ const VxlViewer3D: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; res
         let loadedHvaFrameCount = 0
         let nextHvaInfo: HvaSelectionInfo = {
           source: 'none',
-          reason: '未匹配到 HVA，使用默认姿态',
+          reason: t('viewer.noHvaUseDefault'),
           resolvedPath: targetHvaPath || null,
         }
         if (targetHvaPath) {
@@ -236,14 +238,14 @@ const VxlViewer3D: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; res
             if (loadedHvaFrameCount > 0) {
               nextHvaInfo = {
                 source: hvaPath ? 'manual' : 'auto',
-                reason: hvaPath ? '手动 HVA 已加载' : '同名 HVA 自动匹配成功',
+                reason: hvaPath ? t('viewer.manualHvaLoaded') : t('viewer.sameNameHvaMatched'),
                 resolvedPath: targetHvaPath,
               }
             } else {
               loadedHva = null
               nextHvaInfo = {
                 source: 'none',
-                reason: 'HVA 无有效帧，使用默认姿态',
+                reason: t('viewer.hvaNoValidFrames'),
                 resolvedPath: targetHvaPath,
               }
             }
@@ -251,8 +253,8 @@ const VxlViewer3D: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; res
             nextHvaInfo = {
               source: 'none',
               reason: hvaPath
-                ? `手动 HVA 加载失败（${targetHvaPath}），使用默认姿态`
-                : '未匹配到同名 HVA，使用默认姿态',
+                ? t('viewer.manualHvaLoadFailed', { path: targetHvaPath })
+                : t('viewer.noSameNameHva'),
               resolvedPath: targetHvaPath,
             }
           }
@@ -432,28 +434,28 @@ const VxlViewer3D: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; res
       renderer = null
       controls = null
     }
-  }, [selectedFile, mixFiles, palettePath, resourceContext, hvaPath])
+  }, [selectedFile, mixFiles, palettePath, resourceContext, hvaPath, t])
 
   const paletteOptions = useMemo(
-    () => [{ value: '', label: '自动(规则/内嵌)' }, ...paletteList.map((p) => ({ value: p, label: p.split('/').pop() || p }))],
-    [paletteList],
+    () => [{ value: '', label: t('viewer.paletteAutoEmbedded') }, ...paletteList.map((p) => ({ value: p, label: p.split('/').pop() || p }))],
+    [paletteList, t],
   )
   const hvaSelectOptions = useMemo(
     () => [
-      { value: HVA_AUTO_VALUE, label: '自动(同名匹配)', searchText: 'auto hva' },
+      { value: HVA_AUTO_VALUE, label: t('viewer.hvaAutoSameName'), searchText: 'auto hva' },
       ...hvaOptions.map((path) => ({
         value: path,
         label: path.split('/').pop() || path,
         searchText: path,
       })),
     ],
-    [hvaOptions],
+    [hvaOptions, t],
   )
   const hvaSourceLabel = useMemo(() => {
-    if (hvaSourceInfo.source === 'auto') return '自动'
-    if (hvaSourceInfo.source === 'manual') return '手动'
-    return '未匹配'
-  }, [hvaSourceInfo.source])
+    if (hvaSourceInfo.source === 'auto') return t('viewer.hvaAuto')
+    if (hvaSourceInfo.source === 'manual') return t('viewer.hvaManual')
+    return t('viewer.hvaNone')
+  }, [hvaSourceInfo.source, t])
   const hvaFrameEnabled = hvaSourceInfo.source !== 'none'
 
   usePaletteHotkeys(paletteOptions, palettePath, setPalettePath, true)
@@ -461,22 +463,22 @@ const VxlViewer3D: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; res
   return (
     <div className="w-full h-full flex flex-col">
       <div className="px-3 py-2 text-xs text-gray-400 border-b border-gray-700 flex items-center gap-2 flex-wrap">
-        <span>VXL 预览（3D体素）</span>
+        <span>{t('viewer.vxlPreview3d')}</span>
         <label className="flex items-center gap-1">
-          <span>调色板</span>
+          <span>{t('viewer.palette')}</span>
           <SearchableSelect
             value={palettePath}
             options={paletteOptions}
             onChange={(next) => setPalettePath(next || '')}
             closeOnSelect={false}
             pinnedValues={['']}
-            searchPlaceholder="搜索调色板..."
-            noResultsText="未找到匹配调色板"
+            searchPlaceholder={t('viewer.searchPalette')}
+            noResultsText={t('viewer.noMatchPalette')}
             triggerClassName="min-w-[160px] max-w-[240px] bg-gray-800 border border-gray-700 rounded px-1 py-0.5 text-xs text-left flex items-center gap-2"
             menuClassName="absolute z-50 mt-1 w-[260px] max-w-[70vw] rounded border border-gray-700 bg-gray-800 shadow-xl"
           />
         </label>
-        <span className="text-gray-500 truncate max-w-[320px]">{paletteInfo.source} - {paletteInfo.reason}</span>
+        <span className="text-gray-500 truncate max-w-[320px]">{paletteInfo.source} - {paletteInfo.reason === 'Embedded palette' ? t('viewer.embeddedPalette') : paletteInfo.reason === 'Manually specified' ? t('viewer.manuallySpecified') : paletteInfo.reason}</span>
         <label className="flex items-center gap-1">
           <span>HVA</span>
           <SearchableSelect
@@ -488,14 +490,14 @@ const VxlViewer3D: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; res
             }}
             closeOnSelect={false}
             pinnedValues={[HVA_AUTO_VALUE]}
-            searchPlaceholder="搜索 HVA..."
-            noResultsText="未找到匹配 HVA"
+            searchPlaceholder={t('viewer.searchHva')}
+            noResultsText={t('viewer.noMatchHva')}
             triggerClassName="min-w-[180px] max-w-[280px] bg-gray-800 border border-gray-700 rounded px-1 py-0.5 text-xs text-left flex items-center gap-2"
             menuClassName="absolute z-50 mt-1 w-[280px] max-w-[70vw] rounded border border-gray-700 bg-gray-800 shadow-xl"
           />
         </label>
         <label className="flex items-center gap-1">
-          <span>帧</span>
+          <span>{t('viewer.frame')}</span>
           <input
             type="number"
             className="w-16 bg-gray-800 border border-gray-700 rounded px-1 py-0.5 disabled:opacity-40"
@@ -527,7 +529,7 @@ const VxlViewer3D: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; res
         </span>
       </div>
       <div ref={mountRef} className="flex-1" />
-      {loading && <div className="absolute inset-0 flex items-center justify-center text-gray-400 bg-black/20">加载中...</div>}
+      {loading && <div className="absolute inset-0 flex items-center justify-center text-gray-400 bg-black/20">{t('bik.loading')}</div>}
       {error && !loading && <div className="absolute top-2 left-2 right-2 p-2 text-red-400 text-xs bg-black/40 rounded">{error}</div>}
     </div>
   )

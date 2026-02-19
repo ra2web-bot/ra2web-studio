@@ -33,6 +33,7 @@ export type RawAssociationExportMode = 'separate' | 'zip'
 export interface RawExportOptions {
   includeAssociations: boolean
   associationMode: RawAssociationExportMode
+  confirmAssociationExport?: (associationCount: number) => Promise<boolean>
 }
 
 export interface RawExportResult {

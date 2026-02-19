@@ -19,6 +19,7 @@ import MapViewer from './preview/MapViewer'
 import BikViewer from './preview/BikViewer'
 import type { ResourceContext } from '../services/gameRes/ResourceContext'
 import ExportDialog from './export/ExportDialog'
+import { useLocale } from '../i18n/LocaleContext'
 
 type MixFileData = { file: File; info: MixFileInfo }
 
@@ -45,6 +46,8 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
   onEnterCurrentMix,
   canEnterCurrentMix = false,
 }) => {
+  const { t } = useLocale()
+
   const getFileTypeIcon = (filePath: string) => {
     const extension = filePath.split('.').pop()?.toLowerCase()
 
@@ -85,44 +88,15 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
 
   const getFileTypeName = (filePath: string) => {
     const extension = filePath.split('.').pop()?.toLowerCase()
-
-    switch (extension) {
-      case 'ini':
-        return 'INI 配置文件'
-      case 'txt':
-        return '文本文件'
-      case 'csf':
-        return 'CSF 字符串表'
-      case 'pal':
-        return '调色板文件'
-      case 'shp':
-        return 'SHP 图像文件'
-      case 'vxl':
-        return 'VXL 3D模型文件'
-      case 'pcx':
-        return 'PCX 图像文件'
-      case 'tmp':
-      case 'tem':
-      case 'sno':
-      case 'urb':
-      case 'ubn':
-      case 'des':
-      case 'lun':
-        return 'TMP 地图图块文件'
-      case 'wav':
-        return 'WAV 音频文件'
-      case 'bik':
-        return 'BIK 视频文件'
-      case 'map':
-      case 'mpr':
-        return '地图文件'
-      case 'mix':
-      case 'mmx':
-      case 'yro':
-        return '王二火大归档文件'
-      default:
-        return '未知文件类型'
+    const keyMap: Record<string, string> = {
+      ini: 'preview.fileType_ini', txt: 'preview.fileType_txt', csf: 'preview.fileType_csf',
+      pal: 'preview.fileType_pal', shp: 'preview.fileType_shp', vxl: 'preview.fileType_vxl',
+      pcx: 'preview.fileType_pcx', wav: 'preview.fileType_wav', bik: 'preview.fileType_bik',
+      map: 'preview.fileType_map', mpr: 'preview.fileType_map',
+      mix: 'preview.fileType_mix', mmx: 'preview.fileType_mix', yro: 'preview.fileType_mix',
     }
+    const key = extension ? (keyMap[extension] ?? (['tmp','tem','sno','urb','ubn','des','lun'].includes(extension) ? 'preview.fileType_tmp' : 'preview.fileType_unknown')) : 'preview.fileType_unknown'
+    return t(key as 'preview.fileType_ini')
   }
 
   const ext = useMemo(() => selectedFile?.split('.').pop()?.toLowerCase() ?? '', [selectedFile])
@@ -135,63 +109,63 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
     Component: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resourceContext?: ResourceContext | null }>
   }
   const tmpViews: ViewerDef[] = [
-    { key: 'image', label: '图像', Component: TmpViewer },
-    { key: 'hex', label: '十六进制', Component: HexViewer },
+    { key: 'image', label: t('viewLabels.image'), Component: TmpViewer },
+    { key: 'hex', label: t('viewLabels.hex'), Component: HexViewer },
   ]
   const mixViews: ViewerDef[] = [
-    { key: 'directory', label: '目录', Component: MixDirectoryViewer },
-    { key: 'hex', label: '十六进制', Component: HexViewer },
+    { key: 'directory', label: t('viewLabels.directory'), Component: MixDirectoryViewer },
+    { key: 'hex', label: t('viewLabels.hex'), Component: HexViewer },
   ]
   const mapViews: ViewerDef[] = [
-    { key: 'minimap', label: '小地图', Component: MapViewer },
-    { key: 'text', label: '文本', Component: IniViewer },
-    { key: 'hex', label: '十六进制', Component: HexViewer },
+    { key: 'minimap', label: t('viewLabels.minimap'), Component: MapViewer },
+    { key: 'text', label: t('viewLabels.text'), Component: IniViewer },
+    { key: 'hex', label: t('viewLabels.hex'), Component: HexViewer },
   ]
   const viewsByExt: Record<string, ViewerDef[]> = {
     ini: [
-      { key: 'text', label: '文本', Component: IniViewer },
-      { key: 'hex', label: '十六进制', Component: HexViewer },
+      { key: 'text', label: t('viewLabels.text'), Component: IniViewer },
+      { key: 'hex', label: t('viewLabels.hex'), Component: HexViewer },
     ],
     dat: [
-      { key: 'auto', label: 'LMD/自动', Component: DatViewer },
-      { key: 'hex', label: '十六进制', Component: HexViewer },
+      { key: 'auto', label: t('viewLabels.lmdAuto'), Component: DatViewer },
+      { key: 'hex', label: t('viewLabels.hex'), Component: HexViewer },
     ],
     txt: [
-      { key: 'text', label: '文本', Component: TxtViewer },
-      { key: 'hex', label: '十六进制', Component: HexViewer },
+      { key: 'text', label: t('viewLabels.text'), Component: TxtViewer },
+      { key: 'hex', label: t('viewLabels.hex'), Component: HexViewer },
     ],
     csf: [
       { key: 'viewer', label: 'CSF', Component: CsfViewer },
-      { key: 'hex', label: '十六进制', Component: HexViewer },
+      { key: 'hex', label: t('viewLabels.hex'), Component: HexViewer },
     ],
     pal: [
-      { key: 'swatches', label: '色板', Component: PalViewer },
-      { key: 'hex', label: '十六进制', Component: HexViewer },
+      { key: 'swatches', label: t('viewLabels.swatches'), Component: PalViewer },
+      { key: 'hex', label: t('viewLabels.hex'), Component: HexViewer },
     ],
     shp: [
-      { key: 'image', label: '图像', Component: ShpViewer },
-      { key: 'hex', label: '十六进制', Component: HexViewer },
+      { key: 'image', label: t('viewLabels.image'), Component: ShpViewer },
+      { key: 'hex', label: t('viewLabels.hex'), Component: HexViewer },
     ],
     vxl: [
-      { key: 'viewer2d', label: '2D帧采样', Component: VxlViewer },
-      { key: 'viewer3d', label: '3D', Component: VxlViewer3D },
-      { key: 'hex', label: '十六进制', Component: HexViewer },
+      { key: 'viewer2d', label: t('viewLabels.viewer2d'), Component: VxlViewer },
+      { key: 'viewer3d', label: t('viewLabels.viewer3d'), Component: VxlViewer3D },
+      { key: 'hex', label: t('viewLabels.hex'), Component: HexViewer },
     ],
     pcx: [
-      { key: 'image', label: '图像', Component: PcxViewer },
-      { key: 'hex', label: '十六进制', Component: HexViewer },
+      { key: 'image', label: t('viewLabels.image'), Component: PcxViewer },
+      { key: 'hex', label: t('viewLabels.hex'), Component: HexViewer },
     ],
     wav: [
-      { key: 'audio', label: '音频', Component: WavViewer },
-      { key: 'hex', label: '十六进制', Component: HexViewer },
+      { key: 'audio', label: t('viewLabels.audio'), Component: WavViewer },
+      { key: 'hex', label: t('viewLabels.hex'), Component: HexViewer },
     ],
     bik: [
-      { key: 'video', label: '视频', Component: BikViewer },
-      { key: 'hex', label: '十六进制', Component: HexViewer },
+      { key: 'video', label: t('viewLabels.video'), Component: BikViewer },
+      { key: 'hex', label: t('viewLabels.hex'), Component: HexViewer },
     ],
     hva: [
-      { key: 'viewer', label: '3D', Component: HvaViewer },
-      { key: 'hex', label: '十六进制', Component: HexViewer },
+      { key: 'viewer', label: t('viewLabels.viewer3d'), Component: HvaViewer },
+      { key: 'hex', label: t('viewLabels.hex'), Component: HexViewer },
     ],
     mix: mixViews,
     mmx: mixViews,
@@ -207,7 +181,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
     lun: tmpViews,
   }
   const defaultViews: ViewerDef[] = [
-    { key: 'hex', label: '十六进制', Component: HexViewer },
+    { key: 'hex', label: t('viewLabels.hex'), Component: HexViewer },
   ]
   const available = useMemo(() => viewsByExt[ext] ?? defaultViews, [ext])
   const [activeView, setActiveView] = useState<string>(available[0].key)
@@ -222,8 +196,8 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
       <div className="h-full flex items-center justify-center text-gray-500">
         <div className="text-center">
           <FileText size={64} className="mx-auto mb-4 opacity-50" />
-          <p className="text-lg">选择一个文件来预览</p>
-          <p className="text-sm mt-2">在左侧文件树中点击文件来查看预览</p>
+          <p className="text-lg">{t('preview.selectFile')}</p>
+          <p className="text-sm mt-2">{t('preview.selectFileHint')}</p>
         </div>
       </div>
     )
@@ -247,8 +221,8 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
                     ? 'bg-blue-600 text-white'
                     : 'text-gray-300 hover:bg-gray-700 hover:text-white'
                 }`}
-                title="点击可以查看元数据详情"
-                aria-label="点击可以查看元数据详情"
+                title={t('preview.metadataAria')}
+                aria-label={t('preview.metadataAria')}
                 aria-pressed={metadataDrawerOpen}
               >
                 <Info size={16} />
@@ -267,7 +241,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
               }}
             >
               <Download size={14} />
-              原始导出
+              {t('preview.rawExport')}
             </button>
             <button
               type="button"
@@ -282,10 +256,10 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
                 setExportDialogOpen(true)
               }}
               disabled={ext !== 'shp'}
-              title={ext === 'shp' ? '导出 PNG/JPG/GIF' : '仅 SHP 支持图片/GIF 导出'}
+              title={ext === 'shp' ? t('preview.imageGifExportTitle') : t('preview.shpOnlyHint')}
             >
               <Image size={14} />
-              图片/GIF 导出
+              {t('preview.imageGifExport')}
             </button>
           </div>
         </div>
@@ -293,7 +267,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
 
       {/* 视图切换 */}
       <div className="px-4 py-2 border-b border-gray-700 flex items-center gap-2">
-        <span className="text-xs text-gray-400">视图:</span>
+        <span className="text-xs text-gray-400">{t('preview.viewLabel')}:</span>
         <div className="flex flex-wrap gap-2">
           {available.map(v => (
             <button
@@ -350,7 +324,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
           </div>
         )}
         <div>
-          <span className="text-xs text-gray-400">您正在查看文件：{selectedFile.split('/').pop()}</span>
+          <span className="text-xs text-gray-400">{t('preview.viewingFile', { name: selectedFile.split('/').pop() ?? '' })}</span>
         </div>
       </div>
       <ExportDialog

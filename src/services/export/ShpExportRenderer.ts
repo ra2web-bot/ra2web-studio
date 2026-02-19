@@ -88,7 +88,7 @@ export class ShpExportRenderer {
     const loaded = await this.loadShpAsset(context, options.palette)
     const frameIndices = buildFrameIndices(options.frameRange, loaded.geometry.frames)
     if (!frameIndices.length) {
-      throw new Error('没有可导出的帧')
+      throw new Error('No frames to export')
     }
 
     const frameCanvases = frameIndices.map((frameIndex) =>
@@ -137,7 +137,7 @@ export class ShpExportRenderer {
     const loaded = await this.loadShpAsset(context, options.palette)
     const frameIndices = buildFrameIndices(options.frameRange, loaded.geometry.frames)
     if (!frameIndices.length) {
-      throw new Error('没有可导出的帧')
+      throw new Error('No frames to export')
     }
 
     const gif = GIFEncoder()
@@ -148,7 +148,7 @@ export class ShpExportRenderer {
       if (frameIndex == null) continue
       const frameCanvas = this.renderFrameCanvas(loaded, frameIndex, options.transparency)
       const frameCtx = frameCanvas.getContext('2d')
-      if (!frameCtx) throw new Error('无法创建 GIF 帧渲染上下文')
+      if (!frameCtx) throw new Error('Cannot create GIF frame render context')
       const rgba = frameCtx.getImageData(0, 0, frameCanvas.width, frameCanvas.height).data
       const palette = quantize(rgba, 256, {
         format: 'rgba4444',
@@ -195,15 +195,15 @@ export class ShpExportRenderer {
   ): Promise<LoadedShpAsset> {
     const selected = splitSelectedFilePath(context.selectedFile, context.mixFiles)
     if (selected.extension !== 'shp') {
-      throw new Error('当前文件不是 SHP，无法执行图像导出')
+      throw new Error('Current file is not SHP, cannot export image')
     }
     const vf = await MixParser.extractFile(selected.mixFile, selected.innerPath)
     if (!vf) {
-      throw new Error('无法读取当前 SHP 文件')
+      throw new Error('Cannot read current SHP file')
     }
     const shp = ShpFile.fromVirtualFile(vf)
     if (!shp || shp.numImages <= 0) {
-      throw new Error('SHP 解析失败或不包含帧数据')
+      throw new Error('SHP parse failed or no frame data')
     }
 
     const geometry = this.computeGeometry(shp)
@@ -259,7 +259,7 @@ export class ShpExportRenderer {
     const frame = loaded.shp.getImage(frameIndex)
     const canvas = createCanvas(loaded.geometry.width, loaded.geometry.height)
     const ctx = canvas.getContext('2d')
-    if (!ctx) throw new Error('无法创建导出画布')
+    if (!ctx) throw new Error('Cannot create export canvas')
 
     let parsedBackground: { r: number; g: number; b: number } | null = null
     if (transparency.mode === 'opaque') {
@@ -314,7 +314,7 @@ export class ShpExportRenderer {
     const rows = Math.ceil(frameCount / columns)
     const canvas = createCanvas(cellWidth * columns, cellHeight * rows)
     const ctx = canvas.getContext('2d')
-    if (!ctx) throw new Error('无法创建拼接导出画布')
+    if (!ctx) throw new Error('Cannot create tiled export canvas')
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
     for (let i = 0; i < frameCount; i++) {
@@ -328,7 +328,7 @@ export class ShpExportRenderer {
   private static flattenForJpeg(canvas: HTMLCanvasElement, backgroundColor: string): HTMLCanvasElement {
     const flattened = createCanvas(canvas.width, canvas.height)
     const ctx = flattened.getContext('2d')
-    if (!ctx) throw new Error('无法创建 JPG 导出画布')
+    if (!ctx) throw new Error('Cannot create JPG export canvas')
     const bg = parseHexColor(backgroundColor)
     ctx.fillStyle = `rgb(${bg.r}, ${bg.g}, ${bg.b})`
     ctx.fillRect(0, 0, flattened.width, flattened.height)

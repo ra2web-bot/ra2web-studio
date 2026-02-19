@@ -101,7 +101,7 @@ export class AssociationResolver {
       kind: 'pal',
       path: decision.resolvedPalettePath,
       filename: normalizeFilename(decision.resolvedPalettePath),
-      reason: `调色板关联：${decision.selection.reason}`,
+      reason: `Palette: ${decision.selection.reason}`,
     }
   }
 
@@ -116,7 +116,7 @@ export class AssociationResolver {
         kind: 'hva',
         path: autoPath,
         filename: normalizeFilename(autoPath),
-        reason: '同名 HVA 自动匹配',
+        reason: 'Same-name HVA match',
       }
     }
 
@@ -136,7 +136,7 @@ export class AssociationResolver {
           kind: 'hva',
           path: candidate,
           filename: normalizeFilename(candidate),
-          reason: '同 stem HVA 匹配',
+          reason: 'Same-stem HVA match',
         }
       }
     }

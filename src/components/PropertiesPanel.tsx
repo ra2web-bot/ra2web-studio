@@ -3,6 +3,7 @@ import { Info, Palette, Layers, FileText } from 'lucide-react'
 import { MixFileData } from './MixEditor'
 import { MixParser } from '../services/MixParser'
 import { CsfFile } from '../data/CsfFile'
+import { useLocale } from '../i18n/LocaleContext'
 
 interface PropertiesPanelProps {
   selectedFile: string | null
@@ -34,6 +35,7 @@ function parseSelectedPath(filePath: string): ParsedPath | null {
 }
 
 const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedFile, mixFiles }) => {
+  const { t } = useLocale()
   const [csfMetadata, setCsfMetadata] = useState<CsfMetadata | null>(null)
   const [csfLoading, setCsfLoading] = useState(false)
   const [csfError, setCsfError] = useState<string | null>(null)
@@ -88,7 +90,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedFile, mixFile
 
     if (!filename) {
       return {
-        name: '未选择文件',
+        name: t('props.noFileSelected'),
         path: '',
         type: 'UNKNOWN',
         size: '0',
@@ -105,9 +107,9 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedFile, mixFile
       name: filename,
       path: filePath,
       type: extension.toUpperCase(),
-      size: fileInfo ? fileInfo.length.toString() : '未知',
-      hash: fileInfo ? `0x${fileInfo.hash.toString(16).toUpperCase()}` : '未知',
-      offset: fileInfo ? fileInfo.offset.toString() : '未知',
+      size: fileInfo ? fileInfo.length.toString() : t('props.unknown'),
+      hash: fileInfo ? `0x${fileInfo.hash.toString(16).toUpperCase()}` : t('props.unknown'),
+      offset: fileInfo ? fileInfo.offset.toString() : t('props.unknown'),
     }
 
     switch (extension) {
@@ -155,7 +157,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedFile, mixFile
       <div className="h-full flex items-center justify-center text-gray-500">
         <div className="text-center">
           <Info size={48} className="mx-auto mb-4 opacity-50" />
-          <p className="text-sm">选择文件查看属性</p>
+          <p className="text-sm">{t('props.selectFileToView')}</p>
         </div>
       </div>
     )
@@ -170,7 +172,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedFile, mixFile
       <div className="p-4 border-b border-gray-700">
         <h3 className="text-lg font-semibold flex items-center">
           <Info size={20} className="mr-2" />
-          文件属性
+          {t('props.fileAttributes')}
         </h3>
       </div>
 
@@ -180,34 +182,34 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedFile, mixFile
         <div className="space-y-2">
           <h4 className="text-sm font-semibold text-gray-300 flex items-center">
             <FileText size={16} className="mr-2" />
-            基本信息
+            {t('props.basicInfo')}
           </h4>
           <div className="space-y-1 text-sm">
             <div className="flex justify-between">
-              <span className="text-gray-400">文件名:</span>
+              <span className="text-gray-400">{t('props.fileName')}:</span>
               <span className="text-white">{properties.name}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-400">文件路径:</span>
+              <span className="text-gray-400">{t('props.filePath')}:</span>
               <span className="text-white text-xs break-all">{properties.path}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-400">文件类型:</span>
+              <span className="text-gray-400">{t('props.fileType')}:</span>
               <span className="text-white">{properties.type}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-400">文件大小:</span>
-              <span className="text-white">{properties.size} 字节</span>
+              <span className="text-gray-400">{t('props.fileSize')}:</span>
+              <span className="text-white">{properties.size} {t('props.bytesUnit')}</span>
             </div>
             {'hash' in properties && (
               <div className="flex justify-between">
-                <span className="text-gray-400">哈希值:</span>
+                <span className="text-gray-400">{t('props.hash')}:</span>
                 <span className="text-white font-mono text-xs">{properties.hash}</span>
               </div>
             )}
             {'offset' in properties && (
               <div className="flex justify-between">
-                <span className="text-gray-400">偏移量:</span>
+                <span className="text-gray-400">{t('props.offset')}:</span>
                 <span className="text-white">{properties.offset}</span>
               </div>
             )}
@@ -219,27 +221,27 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedFile, mixFile
           <div className="space-y-2">
             <h4 className="text-sm font-semibold text-gray-300 flex items-center">
               <Layers size={16} className="mr-2" />
-              SHP 信息
+              {t('props.shpInfo')}
             </h4>
             <div className="space-y-1 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-400">格式:</span>
+                <span className="text-gray-400">{t('props.format')}:</span>
                 <span className="text-white">{properties.format}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-400">帧数:</span>
+                <span className="text-gray-400">{t('props.frames')}:</span>
                 <span className="text-white">{properties.frames}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-400">尺寸:</span>
+                <span className="text-gray-400">{t('props.dimensions')}:</span>
                 <span className="text-white">{properties.width} × {properties.height}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-400">压缩:</span>
+                <span className="text-gray-400">{t('props.compression')}:</span>
                 <span className="text-white">{properties.compression}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-400">调色板:</span>
+                <span className="text-gray-400">{t('props.palette')}:</span>
                 <span className="text-white">{properties.palette}</span>
               </div>
             </div>
@@ -250,29 +252,29 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedFile, mixFile
           <div className="space-y-2">
             <h4 className="text-sm font-semibold text-gray-300 flex items-center">
               <Layers size={16} className="mr-2" />
-              VXL 信息
+              {t('props.vxlInfo')}
             </h4>
             <div className="space-y-1 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-400">格式:</span>
+                <span className="text-gray-400">{t('props.format')}:</span>
                 <span className="text-white">{properties.format}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-400">Section数:</span>
+                <span className="text-gray-400">{t('props.sectionCount')}:</span>
                 <span className="text-white">{properties.sections}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-400">体素数:</span>
+                <span className="text-gray-400">{t('props.voxelCount')}:</span>
                 <span className="text-white">{properties.voxels}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-400">边界:</span>
+                <span className="text-gray-400">{t('props.bounds')}:</span>
                 <span className="text-white">
                   [{properties.bounds.min.join(', ')}] - [{properties.bounds.max.join(', ')}]
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-400">法线:</span>
+                <span className="text-gray-400">{t('props.normals')}:</span>
                 <span className="text-white">{properties.normals}</span>
               </div>
             </div>
@@ -283,27 +285,27 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedFile, mixFile
           <div className="space-y-2">
             <h4 className="text-sm font-semibold text-gray-300 flex items-center">
               <Palette size={16} className="mr-2" />
-              PCX 信息
+              {t('props.pcxInfo')}
             </h4>
             <div className="space-y-1 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-400">格式:</span>
+                <span className="text-gray-400">{t('props.format')}:</span>
                 <span className="text-white">{properties.format}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-400">尺寸:</span>
+                <span className="text-gray-400">{t('props.dimensions')}:</span>
                 <span className="text-white">{properties.width} × {properties.height}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-400">颜色数:</span>
+                <span className="text-gray-400">{t('props.colorCount')}:</span>
                 <span className="text-white">{properties.colors}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-400">位平面:</span>
+                <span className="text-gray-400">{t('props.planes')}:</span>
                 <span className="text-white">{properties.planes}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-400">编码:</span>
+                <span className="text-gray-400">{t('props.encoding')}:</span>
                 <span className="text-white">{properties.encoding}</span>
               </div>
             </div>
@@ -314,36 +316,36 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedFile, mixFile
           <div className="space-y-2">
             <h4 className="text-sm font-semibold text-gray-300 flex items-center">
               <FileText size={16} className="mr-2" />
-              CSF 信息
+              {t('props.csfInfo')}
             </h4>
             {'format' in properties && (
               <div className="flex justify-between text-sm">
-                <span className="text-gray-400">格式:</span>
+                <span className="text-gray-400">{t('props.format')}:</span>
                 <span className="text-white">{properties.format}</span>
               </div>
             )}
             {csfLoading && (
-              <div className="text-xs text-gray-500">正在读取 CSF 元数据...</div>
+              <div className="text-xs text-gray-500">{t('props.readingCsfMetadata')}</div>
             )}
             {csfError && !csfLoading && (
-              <div className="text-xs text-red-400">读取失败：{csfError}</div>
+              <div className="text-xs text-red-400">{t('props.readCsfFailed', { msg: csfError })}</div>
             )}
             {csfMetadata && !csfLoading && (
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-400">版本:</span>
+                  <span className="text-gray-400">{t('props.version')}:</span>
                   <span className="text-white">{csfMetadata.version}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-400">语言:</span>
+                  <span className="text-gray-400">{t('props.language')}:</span>
                   <span className="text-white">{csfMetadata.languageName}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-400">标签数:</span>
+                  <span className="text-gray-400">{t('props.labelCount')}:</span>
                   <span className="text-white">{csfMetadata.parsedLabels}/{csfMetadata.declaredLabels}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-400">声明值数:</span>
+                  <span className="text-gray-400">{t('props.declaredValues')}:</span>
                   <span className="text-white">{csfMetadata.declaredValues}</span>
                 </div>
               </div>

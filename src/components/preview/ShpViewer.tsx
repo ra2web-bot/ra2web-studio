@@ -9,6 +9,7 @@ import SearchableSelect from '../common/SearchableSelect'
 import { usePaletteHotkeys } from './usePaletteHotkeys'
 import type { PaletteSelectionInfo, Rgb } from '../../services/palette/PaletteTypes'
 import type { ResourceContext } from '../../services/gameRes/ResourceContext'
+import { useLocale } from '../../i18n/LocaleContext'
 
 type MixFileData = { file: File; info: MixFileInfo }
 
@@ -17,6 +18,7 @@ const ShpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
   mixFiles,
   resourceContext,
 }) => {
+  const { t } = useLocale()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -81,7 +83,7 @@ const ShpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
           } else {
             selection = {
               source: 'fallback-grayscale',
-              reason: `调色板加载失败（${decision.resolvedPalettePath}），回退灰度`,
+              reason: t('viewer.paletteLoadFailed', { path: decision.resolvedPalettePath }),
               resolvedPath: decision.resolvedPalettePath,
             }
           }
@@ -121,7 +123,7 @@ const ShpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
     }
     load()
     return () => { cancelled = true }
-  }, [selectedFile, mixFiles, palettePath, resourceContext])
+  }, [selectedFile, mixFiles, palettePath, resourceContext, t])
 
   // 当帧或SHP数据改变时重新渲染
   useEffect(() => {
@@ -150,7 +152,7 @@ const ShpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
       const img = shp.getImage(renderIndex)
       const rgba = IndexedColorRenderer.indexedToRgba(img.imageData, img.width, img.height, palette, 0)
       if (img.width <= 0 || img.height <= 0) {
-        setError('SHP 帧尺寸无效，无法渲染图像')
+        setError(t('viewer.invalidFrameSize'))
         return
       }
       const imageData = new ImageData(Uint8ClampedArray.from(rgba), img.width, img.height)
@@ -167,18 +169,18 @@ const ShpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
     } catch (e: any) {
       setError(e?.message || 'SHP 渲染失败')
     }
-  }, [frame, shpData, canvasSize, info])
+  }, [frame, shpData, canvasSize, info, t])
 
   const paletteOptions = useMemo(
-    () => [{ value: '', label: '自动(规则解析)' }, ...paletteList.map(p => ({ value: p, label: p.split('/').pop() || p }))],
-    [paletteList],
+    () => [{ value: '', label: t('viewer.paletteAutoRule') }, ...paletteList.map(p => ({ value: p, label: p.split('/').pop() || p }))],
+    [paletteList, t],
   )
   usePaletteHotkeys(paletteOptions, palettePath, setPalettePath, true)
 
   return (
     <div className="w-full h-full flex flex-col">
       <div className="px-3 py-2 text-xs text-gray-400 border-b border-gray-700 flex items-center gap-3">
-        <div>帧: 
+        <div>{t('viewer.frameLabel')} 
           <input
             type="number"
             min={0}
@@ -189,22 +191,22 @@ const ShpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
           {info ? <span className="ml-2">/ {info.frames - 1}</span> : null}
         </div>
         <div className="flex items-center gap-2">
-          <span>调色板:</span>
+          <span>{t('viewer.paletteLabel')}</span>
           <SearchableSelect
             value={palettePath}
             options={paletteOptions}
             onChange={(next) => setPalettePath(next || '')}
             closeOnSelect={false}
             pinnedValues={['']}
-            searchPlaceholder="搜索调色板..."
-            noResultsText="未找到匹配调色板"
+            searchPlaceholder={t('viewer.searchPalette')}
+            noResultsText={t('viewer.noMatchPalette')}
           />
         </div>
         <div className="text-gray-500 truncate max-w-[420px]">
-          来源: {paletteInfo.source} - {paletteInfo.reason}
+          {t('viewer.source')}: {paletteInfo.source} - {paletteInfo.reason === 'Embedded palette' ? t('viewer.embeddedPalette') : paletteInfo.reason === 'Manually specified' ? t('viewer.manuallySpecified') : paletteInfo.reason}
         </div>
         {info && (
-          <div className="ml-auto">尺寸: {info.w} × {info.h}，帧数: {info.frames}</div>
+          <div className="ml-auto">{t('viewer.size')}: {info.w} × {info.h}，{t('viewer.frameCount')}: {info.frames}</div>
         )}
       </div>
       <div className="flex-1 overflow-auto flex items-center justify-center relative" style={{ backgroundImage: 'repeating-linear-gradient(45deg, #2d2d2d 0, #2d2d2d 12px, #343434 12px, #343434 24px)' }}>
@@ -212,7 +214,7 @@ const ShpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
           <canvas ref={canvasRef} style={{ imageRendering: 'pixelated', width: 'auto', height: 'auto' }} />
         </div>
         {loading && (
-          <div className="absolute inset-0 flex items-center justify-center text-gray-400 bg-black/20">加载中...</div>
+          <div className="absolute inset-0 flex items-center justify-center text-gray-400 bg-black/20">{t('bik.loading')}</div>
         )}
         {error && !loading && (
           <div className="absolute top-2 left-2 right-2 p-2 text-red-400 text-xs bg-black/40 rounded">{error}</div>

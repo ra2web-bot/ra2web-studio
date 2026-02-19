@@ -10,6 +10,7 @@ import SearchableSelect from '../common/SearchableSelect'
 import { usePaletteHotkeys } from './usePaletteHotkeys'
 import type { PaletteSelectionInfo, Rgb } from '../../services/palette/PaletteTypes'
 import type { ResourceContext } from '../../services/gameRes/ResourceContext'
+import { useLocale } from '../../i18n/LocaleContext'
 
 type MixFileData = { file: File; info: MixFileInfo }
 
@@ -262,6 +263,7 @@ const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
   mixFiles,
   resourceContext,
 }) => {
+  const { t } = useLocale()
   const mountRef = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -412,7 +414,7 @@ const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
           } else {
             selectedInfo = {
               source: 'fallback-grayscale',
-              reason: `调色板加载失败（${decision.resolvedPalettePath}），回退灰度`,
+              reason: t('viewer.paletteLoadFailed', { path: decision.resolvedPalettePath }),
               resolvedPath: decision.resolvedPalettePath,
             }
           }
@@ -423,7 +425,7 @@ const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
           } else {
             selectedInfo = {
               source: 'fallback-grayscale',
-              reason: '内嵌调色板无效，回退灰度',
+              reason: t('viewer.embeddedPaletteInvalid'),
               resolvedPath: null,
             }
           }
@@ -447,7 +449,7 @@ const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
     }
     load()
     return () => { disposed = true }
-  }, [selectedFile, mixFiles, palettePath, resourceContext])
+  }, [selectedFile, mixFiles, palettePath, resourceContext, t])
 
   // 当帧或VXL数据改变时重新渲染
   useEffect(() => {
@@ -463,8 +465,8 @@ const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
   }, [frameIndex, vxlData, sectionRenderMode])
 
   const paletteOptions = useMemo(
-    () => [{ value: '', label: '自动(规则/内嵌)' }, ...paletteList.map((p) => ({ value: p, label: p.split('/').pop() || p }))],
-    [paletteList],
+    () => [{ value: '', label: t('viewer.paletteAutoEmbedded') }, ...paletteList.map((p) => ({ value: p, label: p.split('/').pop() || p }))],
+    [paletteList, t],
   )
   const normalizedFrame = normalizeFrameIndex(frameIndex, XCC_FRAME_COUNT)
   const xccAngles = frameToXccAngles(normalizedFrame)
@@ -473,7 +475,7 @@ const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
   return (
     <div className="w-full h-full flex flex-col">
       <div className="px-3 py-2 text-xs text-gray-400 border-b border-gray-700 flex items-center gap-3 flex-wrap">
-        <span>VXL 预览（2D帧采样）</span>
+        <span>{t('viewer.vxlPreview2d')}</span>
         <label className="flex items-center gap-1">
           <span>Section</span>
           <select
@@ -481,36 +483,36 @@ const VxlViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
             value={sectionRenderMode}
             onChange={e => setSectionRenderMode((e.target.value as SectionRenderMode) || 'per-section')}
           >
-            <option value="per-section">逐 section</option>
-            <option value="merged">合并</option>
+            <option value="per-section">{t('viewer.perSection')}</option>
+            <option value="merged">{t('viewer.merged')}</option>
           </select>
         </label>
         <label className="flex items-center gap-1">
-          <span>视角索引</span>
+          <span>{t('viewer.viewIndex')}</span>
           <input className="w-40" type="range" min={0} max={XCC_FRAME_COUNT - 1} value={normalizedFrame} onChange={e => setFrameIndex(parseInt(e.target.value || '0', 10) || 0)} />
           <span className="w-14 text-right">{normalizedFrame}</span>
         </label>
         <span className="text-gray-500">xr={xccAngles.xr}, yr={xccAngles.yr}</span>
         <label className="flex items-center gap-1">
-          <span>调色板</span>
+          <span>{t('viewer.palette')}</span>
           <SearchableSelect
             value={palettePath}
             options={paletteOptions}
             onChange={(next) => setPalettePath(next || '')}
             closeOnSelect={false}
             pinnedValues={['']}
-            searchPlaceholder="搜索调色板..."
-            noResultsText="未找到匹配调色板"
+            searchPlaceholder={t('viewer.searchPalette')}
+            noResultsText={t('viewer.noMatchPalette')}
             triggerClassName="min-w-[160px] max-w-[240px] bg-gray-800 border border-gray-700 rounded px-1 py-0.5 text-xs text-left flex items-center gap-2"
             menuClassName="absolute z-50 mt-1 w-[260px] max-w-[70vw] rounded border border-gray-700 bg-gray-800 shadow-xl"
           />
         </label>
         <span className="text-gray-500 truncate max-w-[300px]">
-          {paletteInfo.source} - {paletteInfo.reason}
+          {paletteInfo.source} - {paletteInfo.reason === 'Embedded palette' ? t('viewer.embeddedPalette') : paletteInfo.reason === 'Manually specified' ? t('viewer.manuallySpecified') : paletteInfo.reason}
         </span>
       </div>
       <div ref={mountRef} className="flex-1 flex items-center justify-center bg-gray-900" />
-      {loading && <div className="absolute inset-0 flex items-center justify-center text-gray-400 bg-black/20">加载中...</div>}
+      {loading && <div className="absolute inset-0 flex items-center justify-center text-gray-400 bg-black/20">{t('bik.loading')}</div>}
       {error && !loading && <div className="absolute top-2 left-2 right-2 p-2 text-red-400 text-xs bg-black/40 rounded">{error}</div>}
     </div>
   )

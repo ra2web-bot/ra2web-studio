@@ -11,6 +11,7 @@ import SearchableSelect from '../common/SearchableSelect'
 import { usePaletteHotkeys } from './usePaletteHotkeys'
 import type { PaletteSelectionInfo, Rgb } from '../../services/palette/PaletteTypes'
 import type { ResourceContext } from '../../services/gameRes/ResourceContext'
+import { useLocale } from '../../i18n/LocaleContext'
 
 type MixFileData = { file: File; info: MixFileInfo }
 
@@ -208,6 +209,7 @@ const TmpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
   mixFiles,
   resourceContext,
 }) => {
+  const { t } = useLocale()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -273,7 +275,7 @@ const TmpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
             } else {
               selection = {
                 source: 'fallback-grayscale',
-                reason: `调色板加载失败（${decision.resolvedPalettePath}），回退灰度`,
+                reason: t('viewer.paletteLoadFailed', { path: decision.resolvedPalettePath }),
                 resolvedPath: decision.resolvedPalettePath,
               }
             }
@@ -360,7 +362,7 @@ const TmpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
                 ctx.clearRect(0, 0, emptyWidth, emptyHeight)
                 setPaletteInfo({
                   source: 'fallback-grayscale',
-                  reason: 'SHP兼容模式 - 该资源无可绘制帧，显示空画布',
+                  reason: t('viewer.shpCompatNoFrames'),
                   resolvedPath: null,
                 })
                 setInfo({
@@ -383,7 +385,7 @@ const TmpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
               if (cancelled) return
               setPaletteInfo({
                 ...paletteResolved.selection,
-                reason: `SHP兼容模式 - ${paletteResolved.selection.reason}`,
+                reason: t('viewer.shpCompatMode', { reason: paletteResolved.selection.reason }),
               })
               const rgba = IndexedColorRenderer.indexedToRgba(
                 firstFrame.imageData,
@@ -425,7 +427,7 @@ const TmpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
             || errorMessage.includes('TMP has no tiles')
           ) {
             setFallbackToHex(true)
-            setError('该资源不是标准 TS TMP 图像块，已切换到十六进制预览')
+            setError(t('viewer.tmpNotStandard'))
           } else {
             setError(errorMessage)
           }
@@ -441,11 +443,11 @@ const TmpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
     return () => {
       cancelled = true
     }
-  }, [selectedFile, mixFiles, palettePath, resourceContext])
+  }, [selectedFile, mixFiles, palettePath, resourceContext, t])
 
   const paletteOptions = useMemo(
-    () => [{ value: '', label: '自动(规则解析)' }, ...paletteList.map((p) => ({ value: p, label: p.split('/').pop() || p }))],
-    [paletteList],
+    () => [{ value: '', label: t('viewer.paletteAutoRule') }, ...paletteList.map((p) => ({ value: p, label: p.split('/').pop() || p }))],
+    [paletteList, t],
   )
   usePaletteHotkeys(paletteOptions, palettePath, setPalettePath, true)
 
@@ -453,7 +455,7 @@ const TmpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
     return (
       <div className="w-full h-full flex flex-col">
         <div className="px-3 py-2 text-xs text-yellow-300 border-b border-gray-700 bg-yellow-900/10">
-          {error || '该资源不是标准 TS TMP 图像块，已切换到十六进制预览'}
+          {error || t('viewer.tmpNotStandard')}
         </div>
         <div className="flex-1 min-h-0">
           <HexViewer selectedFile={selectedFile} mixFiles={mixFiles} resourceContext={resourceContext} />
@@ -466,25 +468,25 @@ const TmpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
     <div className="w-full h-full flex flex-col">
       <div className="px-3 py-2 text-xs text-gray-400 border-b border-gray-700 flex items-center gap-3">
         <div className="flex items-center gap-2">
-          <span>调色板:</span>
+          <span>{t('viewer.paletteLabel')}</span>
           <SearchableSelect
             value={palettePath}
             options={paletteOptions}
             onChange={(next) => setPalettePath(next || '')}
             closeOnSelect={false}
             pinnedValues={['']}
-            searchPlaceholder="搜索调色板..."
-            noResultsText="未找到匹配调色板"
+            searchPlaceholder={t('viewer.searchPalette')}
+            noResultsText={t('viewer.noMatchPalette')}
           />
         </div>
         <div className="text-gray-500 truncate max-w-[420px]">
-          来源: {paletteInfo.source} - {paletteInfo.reason}
+          {t('viewer.source')}: {paletteInfo.source} - {paletteInfo.reason === 'Embedded palette' ? t('viewer.embeddedPalette') : paletteInfo.reason === 'Manually specified' ? t('viewer.manuallySpecified') : paletteInfo.reason}
         </div>
         {info && (
           <div className="ml-auto">
             {info.mode === 'tmp'
-              ? `尺寸: ${info.width} × ${info.height}，图块: ${info.presentTiles}/${info.totalTiles}，块尺寸: ${info.blockWidth}×${info.blockHeight}`
-              : `SHP兼容渲染: ${info.width} × ${info.height}，帧数: ${info.frames ?? info.totalTiles}`
+              ? t('viewer.tmpSizeInfo', { w: String(info.width), h: String(info.height), present: String(info.presentTiles), total: String(info.totalTiles), bw: String(info.blockWidth), bh: String(info.blockHeight) })
+              : t('viewer.shpCompatRender', { w: String(info.width), h: String(info.height), frames: String(info.frames ?? info.totalTiles) })
             }
           </div>
         )}
@@ -497,7 +499,7 @@ const TmpViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
           <canvas ref={canvasRef} style={{ imageRendering: 'pixelated', width: 'auto', height: 'auto' }} />
         </div>
         {loading && (
-          <div className="absolute inset-0 flex items-center justify-center text-gray-400 bg-black/20">加载中...</div>
+          <div className="absolute inset-0 flex items-center justify-center text-gray-400 bg-black/20">{t('bik.loading')}</div>
         )}
         {error && !loading && (
           <div className="absolute top-2 left-2 right-2 p-2 text-red-400 text-xs bg-black/40 rounded">{error}</div>

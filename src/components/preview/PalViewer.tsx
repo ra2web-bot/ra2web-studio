@@ -3,9 +3,11 @@ import { MixParser, MixFileInfo } from '../../services/MixParser'
 import { PaletteParser } from '../../services/palette/PaletteParser'
 import type { Rgb } from '../../services/palette/PaletteTypes'
 import type { ResourceContext } from '../../services/gameRes/ResourceContext'
+import { useLocale } from '../../i18n/LocaleContext'
 
 type MixFileData = { file: File; info: MixFileInfo }
 const PalViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resourceContext?: ResourceContext | null }> = ({ selectedFile, mixFiles }) => {
+  const { t } = useLocale()
   const [colors, setColors] = useState<Rgb[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -49,14 +51,14 @@ const PalViewer: React.FC<{ selectedFile: string; mixFiles: MixFileData[]; resou
     return colors.slice(0, limit)
   }, [colors])
 
-  if (loading) return <div className="h-full w-full flex items-center justify-center text-gray-400">加载中...</div>
+  if (loading) return <div className="h-full w-full flex items-center justify-center text-gray-400">{t('bik.loading')}</div>
   if (error) return <div className="p-3 text-red-400 text-sm">{error}</div>
   if (!colors) return null
 
   return (
     <div className="w-full h-full overflow-y-auto">
       <div className="px-4 py-2 border-b border-gray-700 text-xs text-gray-400">
-        调色板颜色数: {count}（显示最多 256）
+        {t('viewer.paletteColorCount', { count: String(count) })}
       </div>
       <div className="p-2">
         <div className="grid grid-cols-16 gap-1">

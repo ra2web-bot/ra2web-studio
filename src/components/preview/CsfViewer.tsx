@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { MixParser, MixFileInfo } from '../../services/MixParser'
 import type { ResourceContext } from '../../services/gameRes/ResourceContext'
+import { useLocale } from '../../i18n/LocaleContext'
 import { CsfEntry, CsfFile } from '../../data/CsfFile'
 
 type MixFileData = { file: File; info: MixFileInfo }
@@ -10,6 +11,7 @@ const CsfViewer: React.FC<{
   mixFiles: MixFileData[]
   resourceContext?: ResourceContext | null
 }> = ({ selectedFile, mixFiles }) => {
+  const { t } = useLocale()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
@@ -75,26 +77,26 @@ const CsfViewer: React.FC<{
   }
 
   if (loading) {
-    return <div className="h-full w-full flex items-center justify-center text-gray-400">加载中...</div>
+    return <div className="h-full w-full flex items-center justify-center text-gray-400">{t('csf.loading')}</div>
   }
 
   if (error) {
     return (
       <div className="p-3 text-sm text-red-400">
-        <div>CSF 解析失败：{error}</div>
-        <div className="mt-2 text-xs text-gray-400">可以切换到“十六进制”视图继续检查原始字节。</div>
+        <div>{t('csf.parseFailed')}{error}</div>
+        <div className="mt-2 text-xs text-gray-400">{t('csf.hexViewHint')}</div>
       </div>
     )
   }
 
   if (!csfFile) {
-    return <div className="h-full w-full flex items-center justify-center text-gray-500">暂无可显示内容</div>
+    return <div className="h-full w-full flex items-center justify-center text-gray-500">{t('csf.noContent')}</div>
   }
 
   return (
     <div className="w-full h-full flex flex-col overflow-hidden">
       <div className="px-3 py-2 border-b border-gray-700 text-xs text-gray-300 flex items-center gap-2">
-        <span>CSF 字符串表</span>
+        <span>{t('csf.csfStringTable')}</span>
         <span className="text-gray-500">
           v{csfFile.version} · lang: {csfFile.languageName} · labels: {csfFile.stats.parsedLabels}/
           {csfFile.stats.declaredLabels}
@@ -102,7 +104,7 @@ const CsfViewer: React.FC<{
         <div className="ml-auto flex items-center gap-2">
           <input
             className="bg-gray-700 text-gray-100 text-xs px-2 py-1 rounded outline-none"
-            placeholder="搜索 Key/Value"
+            placeholder={t('csf.searchPlaceholder')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -111,20 +113,20 @@ const CsfViewer: React.FC<{
             onClick={() => copyEntries(csfFile.entries).catch(() => {})}
             type="button"
           >
-            复制全部
+            {t('csf.copyAll')}
           </button>
           <button
             className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded"
             onClick={() => copyEntries(filteredEntries).catch(() => {})}
             type="button"
           >
-            复制筛选
+            {t('csf.copyFiltered')}
           </button>
         </div>
       </div>
 
       <div className="px-3 py-1 text-xs text-gray-500 border-b border-gray-800">
-        当前显示 {filteredEntries.length} 项
+        {t('csf.showingCount', { count: String(filteredEntries.length) })}
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -140,7 +142,7 @@ const CsfViewer: React.FC<{
             {filteredEntries.length === 0 ? (
               <tr>
                 <td colSpan={3} className="px-3 py-4 text-gray-500">
-                  没有匹配项
+                  {t('csf.noMatches')}
                 </td>
               </tr>
             ) : (
