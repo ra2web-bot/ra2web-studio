@@ -1,172 +1,134 @@
-# RA2Web Studio - 王二火大 Mix文件编辑器
+# RA2Web Studio
 
-**在线红警2 MIX文件编辑器** | **红警2资源管理工具** | **MIX文件解析器** | **红警2游戏开发助手**
+**[简体中文](README.zh.md)**
 
-一个基于React和TypeScript的**在线红警2 MIX文件查看和编辑工具**，支持SHP、VXL、PCX等格式的预览和编辑，是红警2 mod制作和游戏资源管理的专业工具。
+An online **RA2-compatible** MIX file editor built for **RA2WEB**. Supports viewing, editing, and exporting game assets directly in the browser — no installation required.
 
-## 🔍 SEO关键词
+---
 
-在线红警2mix编辑, 红警2MIX文件编辑器, 红警2资源管理, MIX文件解析, 红警2文件提取, 红警2数据预览, RA2 MIX工具, 红警2mod制作, 红警2游戏资源, MIX文件浏览器, 红警2文件管理, 在线红警2编辑器, 红警2MIX解包, 红警2资源编辑, Westwood MIX文件, 红警2游戏开发工具, 红警2mod工具, 红警2文件查看器, MIX文件在线编辑, 红警2资源浏览器, 红警2在线编辑器, 红警2MIX编辑工具
+## ✨ Features
 
-## ✨ 功能特性
+### File Format Support (16+ formats)
 
-### 🎮 支持的文件格式
-- **MIX文件**：**红警2资源包格式**，支持加密和非加密MIX文件，提供**MIX文件解析**和**文件提取**功能
-- **SHP文件**：**2D图像精灵文件**，支持多种压缩格式，是**红警2游戏资源**的核心格式
-- **VXL文件**：**3D体素模型文件**，支持多section结构，用于**红警2 3D模型**显示
-- **PCX文件**：**图像文件**，支持调色板，用于**红警2纹理资源**预览
+| Format | Description | Viewer |
+|--------|-------------|--------|
+| **MIX / MMX / YRO** | RA2-compatible archive (encrypted & unencrypted) | Directory listing, nested navigation |
+| **SHP** | 2D sprite file | Multi-frame preview with palette |
+| **VXL** | 3D voxel model | 2D frame sampling + Three.js 3D view |
+| **HVA** | Voxel animation | 3D axis-based section transform preview |
+| **TMP / TEM / SNO / URB / …** | Map tile | Tile-grid preview with palette |
+| **PCX** | Image | Palette-support preview |
+| **PAL** | Palette | Color swatch grid |
+| **WAV** | Audio | In-browser audio player |
+| **BIK** | Video | Transcoded to WebM via FFmpeg.wasm |
+| **CSF** | String table | Searchable key/value table, copy to clipboard |
+| **MAP / MPR** | Map file | Minimap preview with starting locations |
+| **INI / TXT** | Config / text | Monaco-based syntax editor |
+| **DAT** | LMD / binary | Auto-format detection |
+| **Any** | Fallback | Hex viewer |
 
-### 🖥️ 用户界面
-- **文件树导航**：清晰的树形结构浏览**MIX文件内容**，支持**红警2文件管理**
-- **实时预览**：支持**多种文件格式**的**数据预览**，包括**SHP图像预览**、**VXL 3D模型**显示等
-- **属性面板**：详细显示**文件信息**、**哈希值**、**偏移量**等**红警2资源属性**
-- **工具栏**：**文件操作**、**视图切换**等**红警2编辑工具**功能
+### Palette System
+- Auto-resolution: same-name lookup → XCC rule table → fallback
+- Manual override per asset
+- Supports embedded palettes (SHP/VXL)
+- Smart palette cache for fast re-render
 
-### 🛠️ 技术架构
-- **React 18** + **TypeScript**：现代化前端框架
-- **Tailwind CSS**：实用优先的CSS框架
-- **Vite**：快速的构建工具和开发服务器
-- **Three.js**：3D渲染引擎（预留接口）
+### Export
+- **Raw file**: export any asset as-is
+- **SHP → PNG / JPG / GIF**: frame selection, associated PAL/HVA resolution
+- **MIX rebuild**: import files into a MIX archive and re-export
 
-## 🚀 快速开始
+### Game Resource Management
+- Import from **game directory** or **archive** (tar.gz / exe / 7z / zip)
+- Persistent storage via **OPFS** (no re-import on page reload)
+- Layered resource system: base → patch → mod overrides
+- Supports **LMD** (Local Mix Database) and **GMD** (Global Mix Database / XCC)
+- Nested MIX navigation (drill into sub-MIX files)
 
-### 环境要求
+### Editing
+- Add / replace files inside a MIX archive
+- Rebuild and export the modified MIX
+
+### i18n
+- Interface in **English** (default) and **Simplified Chinese**
+- Language follows browser locale; manual switch persisted in localStorage
+
+---
+
+## 🚀 Quick Start
+
+### Requirements
 - Node.js 18+
-- 现代浏览器（支持ES2020+、Web API）
+- Modern browser (ES2020+)
 
-### 安装和运行
+### Install & Run
 
 ```bash
-# 安装依赖
 npm install
-
-# 启动开发服务器
 npm run dev
-
-# 访问应用
-# 打开浏览器访问 http://localhost:3000
+# Open http://localhost:5173
 ```
 
-### 构建生产版本
+### Production Build
 
 ```bash
-# 构建
 npm run build
-
-# 预览生产版本
 npm run preview
 ```
 
-## 📁 项目结构
+---
+
+## 📁 Project Structure
 
 ```
 ra2web-studio/
 ├── src/
-│   ├── components/          # UI组件
-│   │   ├── MixEditor.tsx    # 主编辑器界面
-│   │   ├── Toolbar.tsx      # 工具栏组件
-│   │   ├── FileTree.tsx     # 文件树组件
-│   │   ├── PreviewPanel.tsx # 预览面板
-│   │   └── PropertiesPanel.tsx # 属性面板
-│   ├── data/                # 数据处理模块
-│   │   ├── MixFile.ts       # MIX文件解析
-│   │   ├── ShpFile.ts       # SHP文件处理
-│   │   ├── VxlFile.ts       # VXL文件处理
-│   │   ├── PcxFile.ts       # PCX文件处理
-│   │   ├── DataStream.ts    # 二进制流处理
-│   │   ├── MixEntry.ts      # MIX条目定义
-│   │   ├── ShpImage.ts      # SHP图像数据
-│   │   ├── encoding/        # 编码器
-│   │   │   ├── Blowfish.ts  # Blowfish加密
-│   │   │   ├── BlowfishKey.ts # 密钥处理
-│   │   │   └── Format3.ts   # Format3解码
-│   │   └── vfs/             # 虚拟文件系统
-│   │       ├── VirtualFile.ts # 虚拟文件
-│   │       └── IOError.ts   # IO错误处理
-│   ├── services/            # 业务服务
-│   │   └── MixParser.ts     # MIX文件解析服务
-│   └── globals.css          # 全局样式
-├── public/                  # 静态资源
-└── package.json             # 项目配置
+│   ├── components/
+│   │   ├── MixEditor.tsx          # Main editor shell
+│   │   ├── Toolbar.tsx            # Import / export actions
+│   │   ├── FileTree.tsx           # File tree with search
+│   │   ├── PreviewPanel.tsx       # Format-dispatch preview panel
+│   │   ├── PropertiesPanel.tsx    # File metadata panel
+│   │   ├── ImportProgressPanel.tsx
+│   │   ├── common/                # Dialogs, SearchableSelect
+│   │   ├── export/                # ExportDialog
+│   │   └── preview/               # 16 format-specific viewers
+│   ├── data/                      # Binary parsers (MIX, SHP, VXL, TMP, CSF, HVA, WAV, PCX …)
+│   │   └── encoding/              # Blowfish, Format3/5/80, LZO1x
+│   ├── services/
+│   │   ├── gameRes/               # Import, bootstrap, OPFS storage, ResourceContext
+│   │   ├── palette/               # PaletteResolver, PaletteLoader, IndexedColorRenderer
+│   │   ├── export/                # ExportController, ShpExportRenderer, AssociationResolver
+│   │   ├── video/                 # BikTranscoder (FFmpeg.wasm), BikCacheStore
+│   │   └── mixEdit/               # MixArchiveBuilder
+│   ├── i18n/                      # LocaleContext, en.ts, zh.ts
+│   └── util/
+├── public/                        # XIF palette index files, global-mix-database.dat
+└── package.json
 ```
-
-## 🔧 核心功能
-
-### MIX文件解析
-- 支持**标准MIX文件格式**，提供**MIX文件解析**功能
-- **自动检测加密类型**，支持**红警2加密MIX**文件处理
-- **提取内部文件列表**，实现**红警2文件提取**功能
-- **计算文件哈希值**，用于**红警2资源管理**和验证
-
-### 文件预览系统
-- **SHP图像预览**：**多帧图像显示**，支持**红警2 SHP文件预览**
-- **VXL 3D模型**：**Three.js渲染**（开发中），用于**红警2 3D模型**展示
-- **PCX图像预览**：**调色板支持**，提供**红警2纹理资源**预览
-- **属性显示**：**文件大小**、**偏移量**、**格式信息**等**红警2数据预览**
-
-### 用户交互
-- **拖拽上传MIX文件**，支持**在线红警2编辑**
-- **文件树导航和选择**，提供**红警2文件管理**界面
-- **实时属性更新**，动态显示**红警2资源属性**
-- **响应式布局设计**，适配各种设备进行**在线MIX编辑**
-
-## 🎯 开发计划
-
-### 已完成 ✅
-- 基础UI结构搭建
-- 核心文件解析代码复制
-- 文件树导航界面
-- 属性面板实现
-
-### 进行中 🔄
-- SHP文件预览组件
-- VXL 3D模型渲染
-- PCX图像预览
-
-### 计划中 📋
-- 文件导出功能
-- 批量操作支持
-- 高级搜索和过滤
-- 性能优化
-
-## 🤝 技术栈
-
-### 前端框架
-- **React 18**：用户界面框架
-- **TypeScript 5.3+**：类型安全的JavaScript
-- **Tailwind CSS**：实用优先的CSS框架
-- **Lucide React**：图标库
-
-### 构建工具
-- **Vite 5.0**：快速构建工具
-- **ESLint**：代码质量检查
-
-### 3D渲染
-- **Three.js 0.177**：WebGL 3D渲染引擎
-
-## 📄 许可证
-
-本项目基于MIT许可证开源。
-
-## 🌐 SEO优化说明
-
-本项目针对**在线红警2 MIX编辑**相关关键词进行了全面SEO优化：
-
-### 主要关键词
-- **在线红警2mix编辑** - 核心功能关键词
-- **红警2MIX文件编辑器** - 产品定位
-- **红警2资源管理** - 功能特性
-- **MIX文件解析** - 核心技术
-- **红警2文件提取** - 用户需求
-
-### 相关长尾关键词
-- 红警2游戏资源, 红警2mod制作, 红警2游戏开发工具, 红警2在线编辑器
-- MIX文件浏览器, 红警2文件管理, 红警2MIX解包, 红警2资源编辑
-- Westwood MIX文件, 红警2mod工具, 红警2文件查看器, MIX文件在线编辑
-- 红警2资源浏览器, 红警2数据预览, RA2 MIX工具
-
-通过HTML meta标签、README.md内容优化、package.json描述等手段，提升搜索引擎对**在线红警2 MIX编辑器**相关内容的收录和排名。
 
 ---
 
-**注意**：本项目仅用于学习和研究目的。王二火大是EA公司的知识产权，请确保拥有合法的游戏副本。
+## 🛠 Tech Stack
+
+| Layer | Library |
+|-------|---------|
+| UI Framework | React 18 + TypeScript 5.3 |
+| Styling | Tailwind CSS 3 |
+| Build | Vite 5 |
+| Code Editor | Monaco Editor 0.53 |
+| 3D Rendering | Three.js 0.177 |
+| Video Transcoding | FFmpeg.wasm 0.12 |
+| Archive Extraction | 7z-wasm 1.2 |
+| GIF Encoding | gifenc 1.0 |
+| Icons | Lucide React |
+
+---
+
+## 📄 License
+
+MIT License.
+
+---
+
+> **Note**: This project is for learning and research purposes. Red Alert 2 is intellectual property of EA. Ensure you own a legal copy of the game before importing assets.
