@@ -4,10 +4,21 @@ export class BikTranscoder {
   private static ffmpeg: FFmpeg | null = null
   private static loadingPromise: Promise<FFmpeg> | null = null
   private static queue: Promise<void> = Promise.resolve()
+  private static inflightByKey = new Map<string, Promise<Uint8Array>>()
 
-  static async transcodeToWebm(inputName: string, bytes: Uint8Array): Promise<Uint8Array> {
+  static async warmup(): Promise<void> {
+    await this.getOrCreateFfmpeg()
+  }
+
+  static async transcodeToWebm(cacheKey: string, inputName: string, bytes: Uint8Array): Promise<Uint8Array> {
     this.assertBikHeader(bytes)
-    return this.runExclusive(async (ffmpeg) => {
+    const existing = this.inflightByKey.get(cacheKey)
+    if (existing) {
+      const deduped = await existing
+      return this.cloneBytes(deduped)
+    }
+
+    const task = this.runExclusive(async (ffmpeg) => {
       const token = `${Date.now()}_${Math.random().toString(16).slice(2, 10)}`
       const baseName = this.sanitizeBaseName(inputName)
       const inName = `${baseName}_${token}.bik`
@@ -28,7 +39,7 @@ export class BikTranscoder {
         ])
         const result = await ffmpeg.readFile(outName)
         if (result instanceof Uint8Array) {
-          return result
+          return this.cloneBytes(result)
         }
         throw new Error('FFmpeg 输出类型异常：期望 Uint8Array')
       } finally {
@@ -36,6 +47,13 @@ export class BikTranscoder {
         await ffmpeg.deleteFile(outName).catch(() => {})
       }
     })
+    this.inflightByKey.set(cacheKey, task)
+    try {
+      const done = await task
+      return this.cloneBytes(done)
+    } finally {
+      this.inflightByKey.delete(cacheKey)
+    }
   }
 
   private static async runExclusive<T>(task: (ffmpeg: FFmpeg) => Promise<T>): Promise<T> {
@@ -91,6 +109,12 @@ export class BikTranscoder {
     const noExt = inputName.replace(/\.[^.]*$/, '')
     const safe = noExt.replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '')
     return safe || 'bik'
+  }
+
+  private static cloneBytes(bytes: Uint8Array): Uint8Array {
+    const copied = new Uint8Array(bytes.byteLength)
+    copied.set(bytes)
+    return copied
   }
 }
 

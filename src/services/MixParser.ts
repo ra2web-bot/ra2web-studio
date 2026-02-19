@@ -71,15 +71,20 @@ export class MixParser {
         const preferred = hashToName.get(h) ?? globalMap.get(h);
         const hashHex = (entry.hash >>> 0).toString(16).toUpperCase().padStart(8, '0');
         const extGuess = this.guessExtensionByHeader(mixFile, entry);
-        const fallbackName = extGuess ? `${hashHex}.${extGuess}` : hashHex;
+        const preferredExt = preferred ? this.getExtensionFromFilename(preferred) : ''
+        const shouldProbe = !extGuess || this.isTheaterTmpLikeExtension(preferredExt)
+        const structuralProbe = shouldProbe ? this.probeLegacyAssetType(mixFile, entry) : ''
+        const resolvedExt = this.normalizeAssetExtension(preferredExt, extGuess, structuralProbe)
+        const fallbackName = resolvedExt ? `${hashHex}.${resolvedExt}` : hashHex;
         const filename = preferred ?? fallbackName;
+        const extension = resolvedExt || this.getExtensionFromFilename(filename)
 
         files.push({
           filename,
           hash: entry.hash,
           offset: entry.offset,
           length: entry.length,
-          extension: this.getExtensionFromFilename(filename)
+          extension
         });
       });
 
@@ -145,13 +150,14 @@ export class MixParser {
         const resolvedExt = this.normalizeAssetExtension(preferredExt, extGuess, structuralProbe)
         const fallbackName = resolvedExt ? `${hashHex}.${resolvedExt}` : hashHex
         const filename = preferred ?? fallbackName
+        const extension = resolvedExt || this.getExtensionFromFilename(filename)
 
         files.push({
           filename,
           hash: entry.hash,
           offset: entry.offset,
           length: entry.length,
-          extension: resolvedExt || this.getExtensionFromFilename(filename),
+          extension,
         })
       })
 
@@ -273,6 +279,17 @@ export class MixParser {
       const vf = (mix as any).openSliceById ? (mix as any).openSliceById(entry.hash, sliceLen) : null
       if (!vf) return ''
       const s = vf.stream
+      const view = s.dataView
+      let xccHvaValid = false
+      if (entry.length >= 24 && view.byteLength >= 24) {
+        const frames = view.getInt32(16, true)
+        const sections = view.getInt32(20, true)
+        xccHvaValid =
+          frames !== 0
+          && sections !== 0
+          && (24 + (48 * frames + 16) * sections) === entry.length
+      }
+
       s.seek(0)
       // MIX 容器嗅探（XCC 风格）：
       // 1) RA/TS Chronodivide 标志位（flags 仅包含 Checksum/Encrypted 位）
@@ -336,6 +353,9 @@ export class MixParser {
           return 'xif'
         }
       }
+      if (xccHvaValid) {
+        return 'hva'
+      }
 
       s.seek(0)
       const sample = s.readString(Math.min(256, s.byteLength)).replace(/\0/g, '')
@@ -356,6 +376,8 @@ export class MixParser {
   // 基于 XCC 的 is_valid 规则做结构探测，用于无文件名映射时的扩展名回退。
   private static probeLegacyAssetType(mix: MixFile, entry: MixEntry): '' | 'shp' | 'tmp' | 'tmp-ra' {
     try {
+      const xccShpTs = this.probeShpTsByXccRule(mix, entry)
+      if (xccShpTs.valid) return 'shp'
       const sliceLen = Math.min(entry.length, 4096)
       const vf = (mix as any).openSliceById ? (mix as any).openSliceById(entry.hash, sliceLen) : null
       if (!vf) return ''
@@ -368,6 +390,78 @@ export class MixParser {
       return ''
     } catch {
       return ''
+    }
+  }
+
+  private static probeShpTsByXccRule(
+    mix: MixFile,
+    entry: MixEntry,
+  ): {
+    valid: boolean
+    reason: string
+    cImages?: number
+    headerZero?: number
+    cx?: number
+    cy?: number
+    requiredIndexBytes?: number
+    checkedImages?: number
+  } {
+    try {
+      const maxProbeLength = Math.min(entry.length, 64 * 1024)
+      const vf = (mix as any).openSliceById ? (mix as any).openSliceById(entry.hash, maxProbeLength) : null
+      if (!vf) return { valid: false, reason: 'slice-open-failed' }
+      const view = vf.stream.dataView
+      const fullSize = entry.length
+      const headerSize = 8
+      const imageHeaderSize = 24
+      if (fullSize < headerSize || view.byteLength < headerSize) {
+        return { valid: false, reason: 'header-too-short' }
+      }
+      const zero = view.getInt16(0, true)
+      const cx = view.getInt16(2, true)
+      const cy = view.getInt16(4, true)
+      const cImages = view.getInt16(6, true)
+      if (zero !== 0) {
+        return { valid: false, reason: 'header-zero-nonzero', headerZero: zero, cImages, cx, cy }
+      }
+      if (cImages < 1 || cImages > 10000) {
+        return { valid: false, reason: 'image-count-out-of-range', cImages, cx, cy }
+      }
+      const requiredIndexBytes = cImages * imageHeaderSize
+      const minDataOffset = headerSize + requiredIndexBytes
+      if (minDataOffset > fullSize) {
+        return { valid: false, reason: 'index-exceeds-full-size', cImages, cx, cy, requiredIndexBytes }
+      }
+      if (minDataOffset > view.byteLength) {
+        return { valid: false, reason: 'slice-too-short-for-index', cImages, cx, cy, requiredIndexBytes }
+      }
+      const checks = Math.min(cImages, 1000)
+      for (let i = 0; i < checks; i++) {
+        const base = headerSize + i * imageHeaderSize
+        if (base + imageHeaderSize > view.byteLength) {
+          return { valid: false, reason: 'slice-too-short-for-image-header', cImages, cx, cy, checkedImages: i, requiredIndexBytes }
+        }
+        const x = view.getInt16(base + 0, true)
+        const y = view.getInt16(base + 2, true)
+        const w = view.getInt16(base + 4, true)
+        const h = view.getInt16(base + 6, true)
+        const compression = view.getInt32(base + 8, true)
+        const zero2 = view.getInt32(base + 16, true)
+        const offset = view.getInt32(base + 20, true)
+        if (w === 0 && h === 0 && offset === 0) continue
+        if (w <= 0 || h <= 0) return { valid: false, reason: 'non-positive-size', cImages, cx, cy, checkedImages: i }
+        if (x + w > cx || y + h > cy) return { valid: false, reason: 'frame-out-of-bounds', cImages, cx, cy, checkedImages: i }
+        if (zero2 !== 0) return { valid: false, reason: 'image-zero-field-nonzero', cImages, cx, cy, checkedImages: i }
+        if (offset < minDataOffset) return { valid: false, reason: 'offset-before-data', cImages, cx, cy, checkedImages: i, requiredIndexBytes }
+        if ((compression & 2) !== 0) {
+          if (offset > fullSize) return { valid: false, reason: 'compressed-offset-oob', cImages, cx, cy, checkedImages: i }
+        } else {
+          if (offset + w * h > fullSize) return { valid: false, reason: 'raw-frame-oob', cImages, cx, cy, checkedImages: i }
+        }
+      }
+      return { valid: true, reason: 'ok', cImages, cx, cy, requiredIndexBytes, checkedImages: checks }
+    } catch (error: any) {
+      return { valid: false, reason: `exception:${String(error?.message || error || 'unknown')}` }
     }
   }
 
@@ -395,24 +489,25 @@ export class MixParser {
     const cy = view.getUint16(4, true)
     const cImages = view.getUint16(6, true)
     if (zero !== 0 || cImages < 1 || cImages > 10000) return false
-    const indexBytes = cImages * 20
+    const imageHeaderSize = 24
+    const indexBytes = cImages * imageHeaderSize
     const minDataOffset = 8 + indexBytes
     if (minDataOffset > totalLength) return false
 
     const maxCheck = Math.min(cImages, 64)
-    const maxReadable = Math.floor((view.byteLength - 8) / 20)
+    const maxReadable = Math.floor((view.byteLength - 8) / imageHeaderSize)
     const checks = Math.min(maxCheck, maxReadable)
     if (checks <= 0) return false
 
     for (let i = 0; i < checks; i++) {
-      const base = 8 + i * 20
+      const base = 8 + i * imageHeaderSize
       const x = view.getInt16(base + 0, true)
       const y = view.getInt16(base + 2, true)
       const w = view.getInt16(base + 4, true)
       const h = view.getInt16(base + 6, true)
       const compression = view.getInt32(base + 8, true)
       const zero2 = view.getInt32(base + 16, true)
-      const offset = view.getInt32(base + 20 - 4, true)
+      const offset = view.getInt32(base + 20, true)
 
       if (w === 0 && h === 0 && offset === 0) continue
       if (w <= 0 || h <= 0) return false
