@@ -35,6 +35,12 @@ type BrowserMode = 'workspace' | 'repository'
 type MixContainerNode = { name: string; info: MixFileInfo; fileObj: File | VirtualFile }
 type RestorableNavigationTarget = { stackNames: string[]; selectedLeafName?: string }
 type LayerLmdSummary = MixArchiveLmdSummary & { layerName: string }
+type PersistEntriesResult = {
+  currentLmdSummary: MixArchiveLmdSummary
+  parentLmdSummaries: LayerLmdSummary[]
+}
+
+const LOCAL_MIX_DATABASE_FILENAME = 'local mix database.dat'
 
 function normalizeMixEntryName(name: string): string {
   return name.replace(/\\/g, '/').trim().toLowerCase()
@@ -42,6 +48,10 @@ function normalizeMixEntryName(name: string): string {
 
 function sameMixEntryName(a: string, b: string): boolean {
   return normalizeMixEntryName(a) === normalizeMixEntryName(b)
+}
+
+function isLocalMixDatabaseEntry(name: string): boolean {
+  return sameMixEntryName(name, LOCAL_MIX_DATABASE_FILENAME)
 }
 
 function cloneBytes(bytes: Uint8Array): Uint8Array {
@@ -597,6 +607,11 @@ const MixEditor: React.FC = () => {
     return ext === 'mix' || ext === 'mmx' || ext === 'yro'
   }, [selectedLeafName])
 
+  const canEditSelectedEntry = useMemo(() => {
+    if (!currentContainer || !selectedLeafName) return false
+    return currentContainer.info.files.some((entry) => sameMixEntryName(entry.filename, selectedLeafName))
+  }, [currentContainer, selectedLeafName])
+
   const showInitialLoadingSplash = (
     !resourceReady
     && initialBooting
@@ -671,6 +686,61 @@ const MixEditor: React.FC = () => {
     }
     return { topBytes: replacementBytes, parentLmdSummaries }
   }, [navStack, readContainerEntries])
+
+  const buildLmdSummaryLines = useCallback((
+    currentLayerName: string,
+    currentSummary: MixArchiveLmdSummary,
+    parentSummaries: LayerLmdSummary[],
+  ): string[] => {
+    const lmdLines: string[] = []
+    const currentLmdAction = currentSummary.replacedExisting ? t('mixEditor.lmdReplaced') : t('mixEditor.lmdAdded')
+    lmdLines.push(
+      `- ${t('mixEditor.lmdCurrentLayer', { name: currentLayerName, action: currentLmdAction, count: String(currentSummary.fileNameCount) })}`,
+    )
+    if (currentSummary.skippedByHashMismatch > 0) {
+      lmdLines.push(`  ${t('mixEditor.lmdSkippedHash', { count: String(currentSummary.skippedByHashMismatch) })}`)
+    }
+    for (const parentSummary of parentSummaries) {
+      const parentAction = parentSummary.replacedExisting ? t('mixEditor.lmdReplaced') : t('mixEditor.lmdAdded')
+      lmdLines.push(
+        `- ${t('mixEditor.lmdParentLayer', { name: parentSummary.layerName, action: parentAction, count: String(parentSummary.fileNameCount) })}`,
+      )
+      if (parentSummary.skippedByHashMismatch > 0) {
+        lmdLines.push(`  ${t('mixEditor.lmdSkippedHash', { count: String(parentSummary.skippedByHashMismatch) })}`)
+      }
+    }
+    return lmdLines
+  }, [t])
+
+  const persistCurrentContainerEntries = useCallback(async (
+    entries: MixArchiveBuilderEntry[],
+    nextSelectedLeafName?: string,
+  ): Promise<PersistEntriesResult> => {
+    const currentLmd = MixArchiveBuilder.upsertLocalMixDatabaseWithSummary(entries)
+    const rebuiltCurrentBytes = MixArchiveBuilder.build(currentLmd.entries)
+    const rebuiltTop = await rebuildTopMixBytesFromCurrent(rebuiltCurrentBytes)
+    const source = resolveTopArchiveSource()
+    if (!source) {
+      throw new Error('Cannot locate top MIX source bucket')
+    }
+
+    const topFilename = source.topFilename
+    const persistedBuffer = new ArrayBuffer(rebuiltTop.topBytes.length)
+    new Uint8Array(persistedBuffer).set(rebuiltTop.topBytes)
+    const topFile = new File([persistedBuffer], topFilename, { type: 'application/octet-stream' })
+    await FileSystemUtil.writeImportedFile(source.bucket, topFile, source.modName, topFilename)
+
+    const restoreTarget: RestorableNavigationTarget = { stackNames: navStack.map((node) => node.name) }
+    if (nextSelectedLeafName) {
+      restoreTarget.selectedLeafName = nextSelectedLeafName
+    }
+    await reloadResourceContext(restoreTarget)
+
+    return {
+      currentLmdSummary: currentLmd.summary,
+      parentLmdSummaries: rebuiltTop.parentLmdSummaries,
+    }
+  }, [navStack, rebuildTopMixBytesFromCurrent, reloadResourceContext, resolveTopArchiveSource])
 
   const handleImportFilesToCurrentMix = useCallback(async (files: File[]) => {
     if (!files.length || !navStack.length) return
@@ -753,41 +823,12 @@ const MixEditor: React.FC = () => {
         return
       }
 
-      const currentLmd = MixArchiveBuilder.upsertLocalMixDatabaseWithSummary(currentEntries)
-      const rebuiltCurrentBytes = MixArchiveBuilder.build(currentLmd.entries)
-      const rebuiltTop = await rebuildTopMixBytesFromCurrent(rebuiltCurrentBytes)
-      const source = resolveTopArchiveSource()
-      if (!source) {
-        throw new Error('Cannot locate top MIX source bucket')
-      }
-
-      const topFilename = source.topFilename
-      const persistedBuffer = new ArrayBuffer(rebuiltTop.topBytes.length)
-      new Uint8Array(persistedBuffer).set(rebuiltTop.topBytes)
-      const topFile = new File([persistedBuffer], topFilename, { type: 'application/octet-stream' })
-      await FileSystemUtil.writeImportedFile(source.bucket, topFile, source.modName, topFilename)
-      await reloadResourceContext({
-        stackNames: navStack.map((node) => node.name),
-        selectedLeafName,
-      })
-
-      const lmdLines: string[] = []
-      const currentLmdAction = currentLmd.summary.replacedExisting ? t('mixEditor.lmdReplaced') : t('mixEditor.lmdAdded')
-      lmdLines.push(
-        `- ${t('mixEditor.lmdCurrentLayer', { name: currentNode.name, action: currentLmdAction, count: String(currentLmd.summary.fileNameCount) })}`,
+      const persisted = await persistCurrentContainerEntries(currentEntries, selectedLeafName || undefined)
+      const lmdLines = buildLmdSummaryLines(
+        currentNode.name,
+        persisted.currentLmdSummary,
+        persisted.parentLmdSummaries,
       )
-      if (currentLmd.summary.skippedByHashMismatch > 0) {
-        lmdLines.push(`  ${t('mixEditor.lmdSkippedHash', { count: String(currentLmd.summary.skippedByHashMismatch) })}`)
-      }
-      for (const parentSummary of rebuiltTop.parentLmdSummaries) {
-        const parentAction = parentSummary.replacedExisting ? t('mixEditor.lmdReplaced') : t('mixEditor.lmdAdded')
-        lmdLines.push(
-          `- ${t('mixEditor.lmdParentLayer', { name: parentSummary.layerName, action: parentAction, count: String(parentSummary.fileNameCount) })}`,
-        )
-        if (parentSummary.skippedByHashMismatch > 0) {
-          lmdLines.push(`  ${t('mixEditor.lmdSkippedHash', { count: String(parentSummary.skippedByHashMismatch) })}`)
-        }
-      }
 
       const importSummary = skippedCount > 0
         ? t('mixEditor.importSummaryWithSkipped', { imported: String(importedCount), skipped: String(skippedCount) })
@@ -806,10 +847,160 @@ const MixEditor: React.FC = () => {
   }, [
     navStack,
     readContainerEntries,
-    rebuildTopMixBytesFromCurrent,
-    reloadResourceContext,
-    resolveTopArchiveSource,
     selectedLeafName,
+    persistCurrentContainerEntries,
+    buildLmdSummaryLines,
+    dialog,
+    t,
+  ])
+
+  const handleRenameSelectedFileInCurrentMix = useCallback(async () => {
+    if (!currentContainer || !selectedLeafName || typeof window === 'undefined') return
+    setLoading(true)
+    setProgressMessage(t('mixEditor.renamingFile'))
+    try {
+      const currentEntries = await readContainerEntries(currentContainer)
+      let selectedIndex = currentEntries.findIndex((entry) => sameMixEntryName(entry.filename, selectedLeafName))
+      if (selectedIndex < 0) {
+        await dialog.info(t('mixEditor.selectedEntryNotFound'))
+        return
+      }
+
+      const oldName = currentEntries[selectedIndex].filename
+      if (isLocalMixDatabaseEntry(oldName)) {
+        await dialog.info(t('mixEditor.renameLmdForbidden'))
+        return
+      }
+
+      const renameInput = window.prompt(t('mixEditor.renamePrompt', { name: oldName }), oldName)
+      if (renameInput == null) return
+      const nextName = normalizeResourceFilename(renameInput)
+      if (!nextName) {
+        await dialog.info(t('mixEditor.invalidFilename'))
+        return
+      }
+      if (sameMixEntryName(nextName, oldName)) return
+
+      const removeEntryAt = (index: number) => {
+        currentEntries.splice(index, 1)
+        if (index < selectedIndex) selectedIndex--
+      }
+
+      const nameConflictIndex = currentEntries.findIndex(
+        (entry, index) => index !== selectedIndex && sameMixEntryName(entry.filename, nextName),
+      )
+      if (nameConflictIndex >= 0) {
+        const conflictName = currentEntries[nameConflictIndex].filename
+        const replaceByNameConfirmed = await dialog.confirmDanger({
+          title: t('mixEditor.confirmReplace'),
+          message: t('mixEditor.confirmReplaceMsg', { name: conflictName }),
+          confirmText: t('common.replace'),
+        })
+        if (!replaceByNameConfirmed) return
+        removeEntryAt(nameConflictIndex)
+      }
+
+      const nextHash = MixArchiveBuilder.hashFilename(nextName)
+      const hashConflictIndex = currentEntries.findIndex((entry, index) => {
+        if (index === selectedIndex) return false
+        const entryHash = entry.hash == null ? MixArchiveBuilder.hashFilename(entry.filename) : (entry.hash >>> 0)
+        return entryHash === nextHash
+      })
+      if (hashConflictIndex >= 0) {
+        const conflictName = currentEntries[hashConflictIndex].filename
+        const replaceByHashConfirmed = await dialog.confirmDanger({
+          title: t('mixEditor.confirmHashConflict'),
+          message: t('mixEditor.confirmHashConflictMsg', { name: nextName, conflict: conflictName }),
+          confirmText: t('common.replace'),
+        })
+        if (!replaceByHashConfirmed) return
+        removeEntryAt(hashConflictIndex)
+      }
+
+      const targetEntry = currentEntries[selectedIndex]
+      if (!targetEntry) {
+        throw new Error(t('mixEditor.selectedEntryNotFound'))
+      }
+      currentEntries[selectedIndex] = {
+        ...targetEntry,
+        filename: nextName,
+        hash: nextHash,
+      }
+
+      const persisted = await persistCurrentContainerEntries(currentEntries, nextName)
+      const lmdLines = buildLmdSummaryLines(
+        currentContainer.name,
+        persisted.currentLmdSummary,
+        persisted.parentLmdSummaries,
+      )
+      await dialog.info({
+        title: t('mixEditor.renameComplete'),
+        message: `${t('mixEditor.renameSummary', { from: oldName, to: nextName })}\n\n${t('mixEditor.lmdUpdateSummary')}\n${lmdLines.join('\n')}`,
+      })
+    } catch (err: any) {
+      console.error('Rename entry in current MIX failed:', err)
+      await dialog.info(err?.message || t('mixEditor.renameFailed'))
+    } finally {
+      setLoading(false)
+      setProgressMessage('')
+    }
+  }, [
+    currentContainer,
+    selectedLeafName,
+    readContainerEntries,
+    persistCurrentContainerEntries,
+    buildLmdSummaryLines,
+    dialog,
+    t,
+  ])
+
+  const handleDeleteSelectedFileInCurrentMix = useCallback(async () => {
+    if (!currentContainer || !selectedLeafName) return
+    setLoading(true)
+    setProgressMessage(t('mixEditor.deletingFile'))
+    try {
+      const currentEntries = await readContainerEntries(currentContainer)
+      const selectedIndex = currentEntries.findIndex((entry) => sameMixEntryName(entry.filename, selectedLeafName))
+      if (selectedIndex < 0) {
+        await dialog.info(t('mixEditor.selectedEntryNotFound'))
+        return
+      }
+      const targetName = currentEntries[selectedIndex].filename
+      const confirmed = await dialog.confirmDanger({
+        title: t('mixEditor.confirmDelete'),
+        message: t('mixEditor.confirmDeleteMsg', { name: targetName }),
+        confirmText: t('common.confirm'),
+      })
+      if (!confirmed) return
+
+      currentEntries.splice(selectedIndex, 1)
+      const nextSelectedName = currentEntries.length > 0
+        ? currentEntries[Math.min(selectedIndex, currentEntries.length - 1)].filename
+        : undefined
+
+      const persisted = await persistCurrentContainerEntries(currentEntries, nextSelectedName)
+      const lmdLines = buildLmdSummaryLines(
+        currentContainer.name,
+        persisted.currentLmdSummary,
+        persisted.parentLmdSummaries,
+      )
+      await dialog.info({
+        title: t('mixEditor.deleteComplete'),
+        message: `${t('mixEditor.deleteSummary', { name: targetName })}\n\n${t('mixEditor.lmdUpdateSummary')}\n${lmdLines.join('\n')}`,
+      })
+    } catch (err: any) {
+      console.error('Delete entry in current MIX failed:', err)
+      await dialog.info(err?.message || t('mixEditor.deleteFailed'))
+    } finally {
+      setLoading(false)
+      setProgressMessage('')
+    }
+  }, [
+    currentContainer,
+    selectedLeafName,
+    readContainerEntries,
+    persistCurrentContainerEntries,
+    buildLmdSummaryLines,
     dialog,
     t,
   ])
@@ -1008,6 +1199,10 @@ const MixEditor: React.FC = () => {
               metadataDrawerOpen={metadataDrawerOpen}
               onEnterCurrentMix={handleEnterCurrentMix}
               canEnterCurrentMix={canEnterCurrentMix}
+              onRenameFile={handleRenameSelectedFileInCurrentMix}
+              onDeleteFile={handleDeleteSelectedFileInCurrentMix}
+              canModifyFile={canEditSelectedEntry}
+              actionsDisabled={loading}
             />
             <div
               className={`absolute inset-y-0 right-0 w-80 bg-gray-800 border-l border-gray-700 shadow-2xl z-20 transform transition-transform duration-200 ${

@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react'
-import { Image, Box, FileText, Music, Info, Archive, Video, Download } from 'lucide-react'
+import { Image, Box, FileText, Music, Info, Archive, Video, Download, Pencil, Trash2 } from 'lucide-react'
 import { MixFileInfo } from '../services/MixParser'
 import IniViewer from './preview/IniViewer'
 import DatViewer from './preview/DatViewer'
@@ -33,6 +33,10 @@ interface PreviewPanelProps {
   metadataDrawerOpen?: boolean
   onEnterCurrentMix?: () => void
   canEnterCurrentMix?: boolean
+  onRenameFile?: () => void
+  onDeleteFile?: () => void
+  canModifyFile?: boolean
+  actionsDisabled?: boolean
 }
 
 const PreviewPanel: React.FC<PreviewPanelProps> = ({
@@ -45,6 +49,10 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
   metadataDrawerOpen = false,
   onEnterCurrentMix,
   canEnterCurrentMix = false,
+  onRenameFile,
+  onDeleteFile,
+  canModifyFile = false,
+  actionsDisabled = false,
 }) => {
   const { t } = useLocale()
 
@@ -232,6 +240,24 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
           </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="px-3 py-1.5 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-100 inline-flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={() => onRenameFile?.()}
+              disabled={!canModifyFile || actionsDisabled}
+            >
+              <Pencil size={14} />
+              {t('preview.renameFile')}
+            </button>
+            <button
+              type="button"
+              className="px-3 py-1.5 rounded text-xs bg-red-700 hover:bg-red-600 text-white inline-flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={() => onDeleteFile?.()}
+              disabled={!canModifyFile || actionsDisabled}
+            >
+              <Trash2 size={14} />
+              {t('preview.deleteFile')}
+            </button>
             <button
               type="button"
               className="px-3 py-1.5 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-100 inline-flex items-center gap-1"
